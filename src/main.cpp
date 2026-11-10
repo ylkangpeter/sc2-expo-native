@@ -77,9 +77,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             GetCursorPos(&pt);
             HMENU hMenu = CreatePopupMenu();
             bool is_locked = OverlayUI::Instance().IsLocked();
-            AppendMenuW(hMenu, MF_STRING, ID_TRAY_LOCK, is_locked ? L"解锁 (Ctrl+Shift+])" : L"锁定 (Ctrl+Shift+])");
-            AppendMenuW(hMenu, MF_STRING, ID_TRAY_MAP, L"切换地图变种 (Ctrl+Shift+[)");
-            AppendMenuW(hMenu, MF_STRING, ID_TRAY_ARTIFACT, L"切换神器点位 (Ctrl+Shift+\\)");
+            AppendMenuW(hMenu, MF_STRING, ID_TRAY_LOCK, is_locked ? L"解锁 (Ctrl+Shift+] / Ctrl+])" : L"锁定 (Ctrl+Shift+] / Ctrl+])");
+            AppendMenuW(hMenu, MF_STRING, ID_TRAY_MAP, L"切换地图变种 (Ctrl+Shift+[ / Ctrl+[)");
+            AppendMenuW(hMenu, MF_STRING, ID_TRAY_ARTIFACT, L"切换神器点位 (Ctrl+Shift+\\ / Ctrl+\\)");
             AppendMenuW(hMenu, MF_STRING, ID_TRAY_COMMANDER, L"指挥官替换器");
             AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
             AppendMenuW(hMenu, MF_STRING, ID_TRAY_EXIT, L"退出 (Exit)");
@@ -129,10 +129,23 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
-    // 1. DPI Awareness
+    // 0. Ensure working directory is the folder containing sc2_expo.exe
+    wchar_t exePath[MAX_PATH];
+    if (GetModuleFileNameW(nullptr, exePath, MAX_PATH)) {
+        wchar_t* lastSlash = wcsrchr(exePath, L'\\');
+        if (lastSlash) {
+            *lastSlash = L'\0';
+            SetCurrentDirectoryW(exePath);
+        }
+    }
+
+    // 1. Initialize COM for WIC & Shell
+    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+
+    // 2. DPI Awareness
     SetProcessDPIAware();
 
-    // 2. Load Config
+    // 3. Load Config
     auto& cfg = AppConfig::Instance();
 
     // 3. Screen Dimensions & Window Bounds
@@ -325,6 +338,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     CleanupDeviceD3D();
     DestroyWindow(hwnd);
     UnregisterClassW(wc.lpszClassName, wc.hInstance);
+    CoUninitialize();
 
     return 0;
 }

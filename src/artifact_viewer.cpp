@@ -5,6 +5,20 @@
 #include <iostream>
 #include <algorithm>
 
+static const std::vector<std::string> kArtifactMaps = {
+    "死亡摇篮", "湮灭快车", "净网行动", "营救矿工", "亡者之夜", "熔火危机"
+};
+
+static std::wstring Utf8ToWide(const std::string& str) {
+    if (str.empty()) return L"";
+    int len = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, nullptr, 0);
+    if (len <= 0) return L"";
+    std::wstring wstr(len, 0);
+    MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, &wstr[0], len);
+    if (!wstr.empty() && wstr.back() == L'\0') wstr.pop_back();
+    return wstr;
+}
+
 static LRESULT CALLBACK ArtifactWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_NCHITTEST:
@@ -18,6 +32,47 @@ static LRESULT CALLBACK ArtifactWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 ArtifactViewer& ArtifactViewer::Instance() {
     static ArtifactViewer instance;
     return instance;
+}
+
+bool ArtifactViewer::HasArtifact(const std::string& map_name) const {
+    if (map_name.empty()) return false;
+    for (const auto& m : kArtifactMaps) {
+        if (map_name.find(m) != std::string::npos) return true;
+    }
+    if (map_name.find("Cradle of Death") != std::string::npos) return true;
+    if (map_name.find("Oblivion Express") != std::string::npos) return true;
+    if (map_name.find("Malwarfare") != std::string::npos) return true;
+    if (map_name.find("Miner Evacuation") != std::string::npos) return true;
+    if (map_name.find("Dead of Night") != std::string::npos) return true;
+    if (map_name.find("Vermillion") != std::string::npos) return true;
+    return false;
+}
+
+std::string ArtifactViewer::ResolveArtifactMap(const std::string& input_map) const {
+    if (!input_map.empty()) {
+        for (const auto& m : kArtifactMaps) {
+            if (input_map.find(m) != std::string::npos) return m;
+        }
+        if (input_map.find("Cradle of Death") != std::string::npos) return "死亡摇篮";
+        if (input_map.find("Oblivion Express") != std::string::npos) return "湮灭快车";
+        if (input_map.find("Malwarfare") != std::string::npos) return "净网行动";
+        if (input_map.find("Miner Evacuation") != std::string::npos) return "营救矿工";
+        if (input_map.find("Dead of Night") != std::string::npos) return "亡者之夜";
+        if (input_map.find("Vermillion") != std::string::npos) return "熔火危机";
+    }
+    // Fallback: if input map doesn't have an artifact, return last viewed or default to 死亡摇篮
+    return m_last_map.empty() ? kArtifactMaps[0] : m_last_map;
+}
+
+void ArtifactViewer::ShowNextMap() {
+    int idx = 0;
+    for (int i = 0; i < (int)kArtifactMaps.size(); ++i) {
+        if (kArtifactMaps[i] == m_last_map) {
+            idx = (i + 1) % (int)kArtifactMaps.size();
+            break;
+        }
+    }
+    ShowMap(kArtifactMaps[idx]);
 }
 
 void ArtifactViewer::Init(HINSTANCE hInstance) {
@@ -62,9 +117,10 @@ void ArtifactViewer::Shutdown() {
 
 void ArtifactViewer::ShowMap(const std::string& map_name) {
     if (!m_hwnd) return;
-    if (RenderToLayeredWindow(map_name)) {
+    std::string target = ResolveArtifactMap(map_name);
+    if (RenderToLayeredWindow(target)) {
         m_visible = true;
-        m_last_map = map_name;
+        m_last_map = target;
         ShowWindow(m_hwnd, SW_SHOWNOACTIVATE);
     }
 }
@@ -77,6 +133,14 @@ void ArtifactViewer::Hide() {
 
 void ArtifactViewer::Toggle(const std::string& map_name) {
     if (m_visible) {
+        // If current map has an artifact and it's different from the one currently shown, switch to it!
+        if (HasArtifact(map_name)) {
+            std::string target = ResolveArtifactMap(map_name);
+            if (target != m_last_map) {
+                ShowMap(target);
+                return;
+            }
+        }
         Hide();
     } else {
         ShowMap(map_name);
@@ -85,17 +149,25 @@ void ArtifactViewer::Toggle(const std::string& map_name) {
 
 bool ArtifactViewer::RenderToLayeredWindow(const std::string& map_name) {
     const auto& cfg = AppConfig::Instance();
-    std::string webp_path = "resources/artifacts/" + map_name + ".webp";
+    std::string target = ResolveArtifactMap(map_name);
+    std::string webp_path = "resources/artifacts/" + target + ".webp";
 
-    int wlen = MultiByteToWideChar(CP_UTF8, 0, webp_path.c_str(), -1, nullptr, 0);
-    if (wlen <= 0) return false;
-    std::wstring wpath(wlen, 0);
-    MultiByteToWideChar(CP_UTF8, 0, webp_path.c_str(), -1, &wpath[0], wlen);
+    std::wstring wpath = Utf8ToWide(webp_path);
+    if (GetFileAttributesW(wpath.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        target = kArtifactMaps[0];
+        webp_path = "resources/artifacts/" + target + ".webp";
+        wpath = Utf8ToWide(webp_path);
+    }
+    if (GetFileAttributesW(wpath.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        return false;
+    }
 
     IWICImagingFactory* pFactory = nullptr;
     HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER,
                                   IID_IWICImagingFactory, (LPVOID*)&pFactory);
-    if (FAILED(hr)) return false;
+    if (FAILED(hr)) {
+        return false;
+    }
 
     IWICBitmapDecoder* pDecoder = nullptr;
     hr = pFactory->CreateDecoderFromFilename(wpath.c_str(), NULL, GENERIC_READ,
@@ -187,7 +259,7 @@ bool ArtifactViewer::RenderToLayeredWindow(const std::string& map_name) {
     }
 
     // Overlay ikun marker if position exists
-    auto it = cfg.artifact_positions.find(map_name);
+    auto it = cfg.artifact_positions.find(target);
     if (it != cfg.artifact_positions.end()) {
         IWICBitmapDecoder* pIkunDecoder = nullptr;
         if (SUCCEEDED(pFactory->CreateDecoderFromFilename(L"ico/ikun.png", NULL, GENERIC_READ,

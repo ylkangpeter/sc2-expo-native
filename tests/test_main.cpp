@@ -232,11 +232,18 @@ void TestScheduleManager() {
     std::string switchedA = sm.SwitchVariant("往日神庙-A");
     TEST_ASSERT(switchedA == "往日神庙-B", "Switching 往日神庙-A should give 往日神庙-B");
 
+    // Base name without suffix fallback
+    std::string switchedBase = sm.SwitchVariant("往日神庙");
+    TEST_ASSERT(switchedBase == "往日神庙-B", "Switching 往日神庙 (base) should give 往日神庙-B");
+
     MapVariant varL;
     TEST_ASSERT(sm.GetVariant("虚空撕裂-左", varL), "虚空撕裂-左 should have variant");
     TEST_ASSERT(varL.type == "LR", "Variant type should be LR");
     std::string switchedL = sm.SwitchVariant("虚空撕裂-左");
     TEST_ASSERT(switchedL == "虚空撕裂-右", "Switching 虚空撕裂-左 should give 虚空撕裂-右");
+
+    std::string switchedBaseL = sm.SwitchVariant("虚空撕裂");
+    TEST_ASSERT(switchedBaseL == "虚空撕裂-左" || switchedBaseL == "虚空撕裂-右", "Switching 虚空撕裂 (base) should cycle variant");
 }
 
 void TestTroopManager() {
