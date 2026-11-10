@@ -34,7 +34,7 @@ def build():
     if os.path.exists("res/resource.rc"):
         print("Compiling Windows resource...")
         res_cmd = [WINDRES_PATH, "res/resource.rc", "-O", "coff", "-o", "res/resource.o"]
-        subprocess.run(res_cmd, check=True)
+        subprocess.run(res_cmd, check=True, stdin=subprocess.DEVNULL)
     
     sources = [
         "vendor/imgui/imgui.cpp",
@@ -74,7 +74,7 @@ def build():
         "-lshell32",
     ]
     
-    target_exe = os.path.join(app_dir, "sc2_expo.exe")
+    target_exe = "dist/sc2_expo/sc2_expo.exe"
     cmd = [
         CLANG_PATH,
         "-O2",
@@ -90,7 +90,7 @@ def build():
     
     print(f"Building {target_exe} with {len(sources)} source files...")
     t0 = time.time()
-    res = subprocess.run(cmd, capture_output=True, text=True)
+    res = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
     t1 = time.time()
     
     if res.returncode != 0:
@@ -186,7 +186,7 @@ def build_tests():
     
     print(f"Building {output_exe} with {len(sources)} source files...")
     t0 = time.time()
-    res = subprocess.run(cmd, capture_output=True, text=True)
+    res = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
     t1 = time.time()
     
     if res.returncode != 0:
