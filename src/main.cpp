@@ -71,7 +71,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         return 0;
 
     case WM_SIZE:
-        if (g_pd3dDevice != nullptr && wParam != SIZE_MINIMIZED) {
+        if (g_pd3dDevice != nullptr && wParam != SIZE_MINIMIZED && LOWORD(lParam) > 0 && HIWORD(lParam) > 0) {
             CleanupRenderTarget();
             g_pSwapChain->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, 0);
             CreateRenderTarget();
@@ -93,8 +93,13 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             AppendMenuW(hMenu, MF_STRING, ID_TRAY_EXIT, L"退出 (Exit)");
 
             SetForegroundWindow(hWnd);
-            TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, pt.x, pt.y, 0, hWnd, nullptr);
+            UINT cmd = TrackPopupMenu(hMenu, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY, pt.x, pt.y, 0, hWnd, nullptr);
+            PostMessageW(hWnd, WM_NULL, 0, 0);
             DestroyMenu(hMenu);
+
+            if (cmd != 0) {
+                SendMessageW(hWnd, WM_COMMAND, MAKEWPARAM(cmd, 0), 0);
+            }
         } else if (lParam == WM_LBUTTONUP) {
             // User requested: 点击tray隐藏/显示
             bool is_vis = IsWindowVisible(hWnd);
@@ -317,36 +322,51 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
         last_time = current_time;
         if (delta_time <= 0.0f) delta_time = 0.016f;
 
-        // Start ImGui frame for Main Window
-        ImGui::SetCurrentContext(g_mainImGuiContext);
-        ImGui_ImplDX11_NewFrame();
-        ImGui_ImplWin32_NewFrame();
-        ImGui::NewFrame();
+        bool main_vis = IsWindowVisible(hwnd);
+        bool settings_vis = SettingsWindow::Instance().IsVisible();
 
-        // Render Overlay
-        OverlayUI::Instance().Render(delta_time);
+        // 1. Render Main HUD if main window is visible
+        if (main_vis && g_mainRenderTargetView) {
+            ImGui::SetCurrentContext(g_mainImGuiContext);
+            ImGui_ImplDX11_NewFrame();
+            ImGui_ImplWin32_NewFrame();
+            ImGui::NewFrame();
 
-        // Rendering
-        ImGui::Render();
-        const float clear_color_with_alpha[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-        g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, nullptr);
-        g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, clear_color_with_alpha);
+            // Render Overlay
+            OverlayUI::Instance().Render(delta_time);
 
-        // Alpha blend state
-        if (g_pBlendState) {
-            float blend_factor[4] = { 0.f, 0.f, 0.f, 0.f };
-            g_pd3dDeviceContext->OMSetBlendState(g_pBlendState, blend_factor, 0xffffffff);
+            // Rendering
+            ImGui::Render();
+            const float clear_color_with_alpha[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+            g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, nullptr);
+            g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, clear_color_with_alpha);
+
+            // Alpha blend state
+            if (g_pBlendState) {
+                float blend_factor[4] = { 0.f, 0.f, 0.f, 0.f };
+                g_pd3dDeviceContext->OMSetBlendState(g_pBlendState, blend_factor, 0xffffffff);
+            }
+
+            ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
+            // Present with VSync
+            g_pSwapChain->Present(1, 0);
+        } else if (!main_vis) {
+            // Keep game state / timer / mutators updated even when overlay is hidden
+            Sc2GameState state = Sc2Client::Instance().GetState();
+            MutatorManager::Instance().Update(state.current_seconds, delta_time);
+            ToastWindow::Instance().Update(delta_time);
         }
 
-        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-
-        // Present with VSync
-        g_pSwapChain->Present(1, 0);
-
-        // Render standalone Settings Window if visible
-        if (SettingsWindow::Instance().IsVisible()) {
+        // 2. Render standalone Settings Window if visible
+        if (settings_vis) {
             SettingsWindow::Instance().Render(delta_time);
             ImGui::SetCurrentContext(g_mainImGuiContext);
+        }
+
+        // 3. Prevent high CPU usage if both windows are hidden
+        if (!main_vis && !settings_vis) {
+            Sleep(16);
         }
     }
 
@@ -439,9 +459,10 @@ void CleanupDeviceD3D() {
 }
 
 void CreateRenderTarget() {
+    if (!g_pSwapChain || !g_pd3dDevice) return;
     ID3D11Texture2D* pBackBuffer = nullptr;
-    g_pSwapChain->GetBuffer(0, IID_PPV_ARGS(&pBackBuffer));
-    if (pBackBuffer) {
+    HRESULT hr = g_pSwapChain->GetBuffer(0, IID_PPV_ARGS(&pBackBuffer));
+    if (SUCCEEDED(hr) && pBackBuffer) {
         g_pd3dDevice->CreateRenderTargetView(pBackBuffer, nullptr, &g_mainRenderTargetView);
         pBackBuffer->Release();
     }

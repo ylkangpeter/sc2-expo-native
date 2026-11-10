@@ -228,20 +228,32 @@ void OverlayUI::RenderMainHUD(float delta_time) {
             SendMessageW(m_hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
         }
 
-        // --- Row 1: Game Time Display ---
+        // --- Row 1: Game Time Display & Full-Row Drag Handle ---
         std::string time_str = ScheduleManager::FormatSecondsToTime(state.current_seconds);
+        ImVec2 time_start_pos = ImGui::GetCursorScreenPos();
+        float avail_w = ImGui::GetContentRegionAvail().x;
+        float row_h = ImGui::GetTextLineHeightWithSpacing() * 1.15f;
+
+        // Cover the entire row width with an invisible button to capture dragging anywhere on this line
+        ImGui::InvisibleButton("##TimeRowDragHandle", ImVec2(avail_w, row_h));
+        bool row_hovered = ImGui::IsItemHovered();
+        bool row_dragging = ImGui::IsItemActive() && ImGui::IsMouseDragging(0);
+
+        // Draw the time text over the invisible button
+        ImGui::SetCursorScreenPos(ImVec2(time_start_pos.x + 2.0f, time_start_pos.y));
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 1.0f, 0.5f, 1.0f));
         ImGui::SetWindowFontScale(base_scale * 1.15f);
         ImGui::Text(" Time: %s", time_str.c_str());
-        if (!m_locked && ImGui::IsItemHovered()) {
+        ImGui::SetWindowFontScale(base_scale);
+        ImGui::PopStyleColor();
+
+        if (!m_locked && (row_hovered || ImGui::IsItemHovered())) {
             ImGui::SetTooltip("按住可拖动窗口位置");
-            if (ImGui::IsMouseDragging(0)) {
+            if (row_dragging || ImGui::IsMouseDragging(0)) {
                 ReleaseCapture();
                 SendMessageW(m_hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
             }
         }
-        ImGui::SetWindowFontScale(base_scale);
-        ImGui::PopStyleColor();
 
         // --- Row 2: Map selection & Variant buttons ---
         const auto& maps = ScheduleManager::Instance().GetMapList();

@@ -12,11 +12,15 @@
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    ImGuiContext* prev = ImGui::GetCurrentContext();
     if (SettingsWindow::Instance().GetImGuiContext()) {
         ImGui::SetCurrentContext(SettingsWindow::Instance().GetImGuiContext());
-        if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam))
+        if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam)) {
+            if (prev) ImGui::SetCurrentContext(prev);
             return true;
+        }
     }
+    if (prev) ImGui::SetCurrentContext(prev);
 
     switch (msg) {
     case WM_CLOSE:
@@ -31,7 +35,7 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
         break;
 
     case WM_SIZE:
-        if (wParam != SIZE_MINIMIZED) {
+        if (wParam != SIZE_MINIMIZED && LOWORD(lParam) > 0 && HIWORD(lParam) > 0) {
             SettingsWindow::Instance().OnResize((UINT)LOWORD(lParam), (UINT)HIWORD(lParam));
         }
         return 0;
@@ -138,10 +142,10 @@ bool SettingsWindow::Init(HINSTANCE hInstance, ID3D11Device* device, ID3D11Devic
     ImGuiStyle& style = ImGui::GetStyle();
     style.WindowBorderSize = 1.0f;
     style.FrameBorderSize = 0.0f;
-    style.WindowRounding = 8.0f;
+    style.WindowRounding = 0.0f;
     style.FrameRounding = 4.0f;
     style.ScrollbarRounding = 4.0f;
-    style.Colors[ImGuiCol_WindowBg] = ImVec4(0.12f, 0.14f, 0.18f, 0.98f);
+    style.Colors[ImGuiCol_WindowBg] = ImVec4(0.12f, 0.14f, 0.18f, 1.0f);
     style.Colors[ImGuiCol_Border] = ImVec4(0.0f, 0.6f, 0.9f, 0.8f);
     style.Colors[ImGuiCol_Header] = ImVec4(0.0f, 0.5f, 0.8f, 0.45f);
     style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.0f, 0.6f, 0.9f, 0.65f);
@@ -181,8 +185,8 @@ void SettingsWindow::Shutdown() {
 void SettingsWindow::CreateRenderTarget() {
     if (!m_swapChain || !m_device) return;
     ID3D11Texture2D* pBackBuffer = nullptr;
-    m_swapChain->GetBuffer(0, IID_PPV_ARGS(&pBackBuffer));
-    if (pBackBuffer) {
+    HRESULT hr = m_swapChain->GetBuffer(0, IID_PPV_ARGS(&pBackBuffer));
+    if (SUCCEEDED(hr) && pBackBuffer) {
         m_device->CreateRenderTargetView(pBackBuffer, nullptr, &m_renderTargetView);
         pBackBuffer->Release();
     }
@@ -230,7 +234,7 @@ void SettingsWindow::Render(float delta_time) {
     RenderUI(delta_time);
 
     ImGui::Render();
-    const float clear_color[4] = { 0.10f, 0.12f, 0.15f, 1.0f };
+    const float clear_color[4] = { 0.12f, 0.14f, 0.18f, 1.0f };
     m_context->OMSetRenderTargets(1, &m_renderTargetView, nullptr);
     m_context->ClearRenderTargetView(m_renderTargetView, clear_color);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
@@ -248,7 +252,7 @@ void SettingsWindow::RenderUI(float delta_time) {
                             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
                             ImGuiWindowFlags_NoBringToFrontOnFocus;
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0f, 12.0f));
 
