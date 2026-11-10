@@ -9,6 +9,7 @@
 #include "artifact_viewer.h"
 #include "lock_window.h"
 #include "toast_window.h"
+#include "settings_window.h"
 #include <windows.h>
 #include <shellapi.h>
 #include <algorithm>
@@ -72,36 +73,31 @@ void OverlayUI::UpdateWindowDimensions() {
     if (!m_hwnd) return;
     const auto& cfg = AppConfig::Instance();
 
-    int base_w = cfg.main_window_width > 120 ? cfg.main_window_width : 175;
-    int base_h = cfg.main_window_height > 120 ? cfg.main_window_height : 218;
+    int base_w = cfg.main_window_width > 120 ? cfg.main_window_width : 173;
+    int base_h = cfg.main_window_height > 120 ? cfg.main_window_height : 340;
 
     int target_w = base_w;
     int target_h = m_locked ? base_h : (base_h + 32);
 
     if (m_show_commander_selector) {
         target_w = 920;
-        target_h = std::max(target_h, 330);
-    } else if (m_show_settings) {
-        target_w = base_w + 320;
-        target_h = std::max(target_h, 360);
+        target_h = std::max(target_h, 340);
     }
 
     SetWindowPos(m_hwnd, HWND_TOPMOST, 0, 0, target_w, target_h,
                  SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER);
 }
 
+bool OverlayUI::IsSettingsOpen() const {
+    return SettingsWindow::Instance().IsVisible();
+}
+
 void OverlayUI::SetSettingsOpen(bool open) {
-    m_show_settings = open;
-    if (m_show_settings) {
-        if (m_locked) {
-            SetLocked(false);
-        }
-    }
-    UpdateWindowDimensions();
+    SettingsWindow::Instance().Show(open);
 }
 
 void OverlayUI::ToggleSettings() {
-    SetSettingsOpen(!m_show_settings);
+    SettingsWindow::Instance().Toggle();
 }
 
 void OverlayUI::SetLocked(bool locked) {
@@ -112,9 +108,6 @@ void OverlayUI::SetLocked(bool locked) {
     if (m_locked) {
         if (m_show_commander_selector) {
             m_show_commander_selector = false;
-        }
-        if (m_show_settings) {
-            m_show_settings = false;
         }
     }
     UpdateWindowDimensions();
@@ -151,9 +144,6 @@ void OverlayUI::ToggleMapVariant() {
 
 void OverlayUI::SetCommanderSelectorOpen(bool open) {
     m_show_commander_selector = open;
-    if (m_show_commander_selector && m_show_settings) {
-        m_show_settings = false;
-    }
     UpdateWindowDimensions();
 }
 
@@ -204,9 +194,6 @@ void OverlayUI::Render(float delta_time) {
     if (m_show_commander_selector) {
         RenderCommanderSelector(delta_time);
     }
-    if (m_show_settings) {
-        RenderSettings(delta_time);
-    }
 }
 
 void OverlayUI::RenderMainHUD(float delta_time) {
@@ -214,7 +201,7 @@ void OverlayUI::RenderMainHUD(float delta_time) {
     Sc2GameState state = Sc2Client::Instance().GetState();
     ImGuiIO& io = ImGui::GetIO();
 
-    int hud_w = cfg.main_window_width > 120 ? cfg.main_window_width : 175;
+    int hud_w = cfg.main_window_width > 120 ? cfg.main_window_width : 173;
     int hud_h = m_locked ? cfg.main_window_height : (cfg.main_window_height + 32);
 
     ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -442,7 +429,7 @@ void OverlayUI::RenderMainHUD(float delta_time) {
         if (!alerts.empty()) {
             ImGui::NewLine();
             for (const auto& a : alerts) {
-                ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "⚠️ %s", a.message.c_str());
+                ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "[!] %s", a.message.c_str());
             }
         }
 
@@ -564,7 +551,7 @@ void OverlayUI::RenderCommanderSelector(float delta_time) {
         ImGui::Spacing();
 
         // Random & Wiki buttons
-        if (ImGui::Button("🎲 随机指挥官 (Random)", ImVec2(165, 30))) {
+        if (ImGui::Button("随机指挥官 (Random)", ImVec2(165, 30))) {
             std::string picked = CommanderManager::Instance().PickRandomCommander(m_current_region, AppConfig::Instance().blacklist);
             if (!picked.empty()) {
                 CommanderManager::Instance().CopyReplacementLink(picked, m_current_region);
@@ -574,7 +561,7 @@ void OverlayUI::RenderCommanderSelector(float delta_time) {
         }
 
         ImGui::SameLine();
-        if (ImGui::Button("🌐 突变列表 Wiki", ImVec2(140, 30))) {
+        if (ImGui::Button("突变列表 Wiki", ImVec2(140, 30))) {
             ShellExecuteA(NULL, "open", WIKI_URL, NULL, NULL, SW_SHOWNORMAL);
         }
 
@@ -582,138 +569,12 @@ void OverlayUI::RenderCommanderSelector(float delta_time) {
         if (m_notice_expire > 0.0f) {
             m_notice_expire -= delta_time;
             ImGui::SameLine();
-            ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.5f, 1.0f), "  ✓ %s", m_notice_text.c_str());
+            ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.5f, 1.0f), "  [OK] %s", m_notice_text.c_str());
         }
 
         ImGui::Spacing();
         ImGui::TextColored(ImVec4(0.75f, 0.75f, 0.75f, 0.85f),
             "使用说明：点击头像复制指令后，在游戏聊天框按 Ctrl+V 发送，并双击发送出的链接即可进入替换图。");
-    }
-    ImGui::End();
-
-    ImGui::PopStyleVar(3);
-    ImGui::PopStyleColor(2);
-}
-
-void OverlayUI::RenderSettings(float delta_time) {
-    auto& cfg = AppConfig::Instance();
-
-    int base_w = cfg.main_window_width > 120 ? cfg.main_window_width : 175;
-    int base_h = cfg.main_window_height > 120 ? cfg.main_window_height : 218;
-    int target_h = std::max(base_h, 380);
-
-    ImGui::SetNextWindowPos(ImVec2((float)base_w + 4.0f, 0));
-    ImGui::SetNextWindowSize(ImVec2(310.0f, (float)target_h));
-
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                            ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
-                            ImGuiWindowFlags_NoBringToFrontOnFocus;
-
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.12f, 0.14f, 0.18f, 0.95f));
-    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.0f, 0.6f, 0.9f, 0.8f));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 2.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 10.0f));
-
-    static float save_notice_timer = 0.0f;
-    if (save_notice_timer > 0.0f) save_notice_timer -= delta_time;
-
-    if (ImGui::Begin("SettingsPanel", nullptr, flags)) {
-        ImGui::TextColored(ImVec4(0.0f, 0.85f, 1.0f, 1.0f), "界面与Toast设置 (Settings)");
-        ImGui::SameLine(ImGui::GetWindowWidth() - 40);
-        if (ImGui::Button("X##CloseSettings", ImVec2(30, 20))) {
-            ToggleSettings();
-        }
-
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        // 1. Window Dimensions
-        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "[ 窗体尺寸设置 ]");
-
-        bool size_changed = false;
-        ImGui::SetNextItemWidth(170);
-        if (ImGui::SliderInt("主窗宽度", &cfg.main_window_width, 140, 300, "%d px")) {
-            size_changed = true;
-        }
-
-        ImGui::SetNextItemWidth(170);
-        if (ImGui::SliderInt("主窗高度", &cfg.main_window_height, 180, 450, "%d px")) {
-            size_changed = true;
-        }
-
-        ImGui::SetNextItemWidth(170);
-        if (ImGui::SliderInt("表格高度", &cfg.table_height, 90, 260, "%d px")) {
-            size_changed = true;
-        }
-
-        if (size_changed) {
-            UpdateWindowDimensions();
-        }
-
-        ImGui::Spacing();
-
-        // 2. Font Size
-        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "[ 文字字体缩放 ]");
-        ImGui::SetNextItemWidth(170);
-        ImGui::SliderFloat("字体大小", &cfg.font_scale, 0.75f, 1.50f, "%.2f x");
-
-        ImGui::Spacing();
-
-        // 3. Toast Notifications
-        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "[ Toast 弹窗通知设置 ]");
-        ImGui::Checkbox("启用 Toast 预警通知", &cfg.toast_allowed);
-
-        ImGui::SetNextItemWidth(170);
-        ImGui::SliderFloat("Toast垂直位置", &cfg.toast_position_y, 0.05f, 0.95f, "%.2f (屏幕比例)");
-
-        ImGui::SetNextItemWidth(170);
-        ImGui::SliderFloat("Toast尺寸缩放", &cfg.toast_scale, 0.6f, 1.8f, "%.2f x");
-
-        ImGui::SetNextItemWidth(170);
-        int duration_sec = cfg.toast_duration_ms / 1000;
-        if (ImGui::SliderInt("显示持续时间", &duration_sec, 2, 15, "%d 秒")) {
-            cfg.toast_duration_ms = duration_sec * 1000;
-        }
-
-        if (ImGui::Button("🔔 测试 Toast 效果 (Preview)", ImVec2(285, 24))) {
-            ToastWindow::Instance().ShowTestToast();
-        }
-
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        // 4. Save & Reset buttons
-        if (ImGui::Button("💾 保存设置", ImVec2(100, 26))) {
-            cfg.Save();
-            save_notice_timer = 3.0f;
-        }
-
-        ImGui::SameLine();
-        if (ImGui::Button("↺ 恢复紧凑默认", ImVec2(110, 26))) {
-            cfg.main_window_width = 175;
-            cfg.main_window_height = 218;
-            cfg.table_height = 135;
-            cfg.font_scale = 1.0f;
-            cfg.toast_allowed = true;
-            cfg.toast_position_y = 0.88f;
-            cfg.toast_scale = 1.0f;
-            cfg.toast_duration_ms = 8000;
-            cfg.Save();
-            UpdateWindowDimensions();
-            save_notice_timer = 3.0f;
-        }
-
-        ImGui::SameLine();
-        if (ImGui::Button("关闭", ImVec2(60, 26))) {
-            ToggleSettings();
-        }
-
-        if (save_notice_timer > 0.0f) {
-            ImGui::Spacing();
-            ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.5f, 1.0f), "✓ 设置已成功保存并生效！");
-        }
     }
     ImGui::End();
 

@@ -18,6 +18,7 @@
 #include "artifact_viewer.h"
 #include "lock_window.h"
 #include "toast_window.h"
+#include "settings_window.h"
 
 #define WM_TRAYICON (WM_USER + 101)
 #define ID_TRAY_EXIT 2001
@@ -33,6 +34,7 @@ static IDXGISwapChain*          g_pSwapChain = nullptr;
 static ID3D11RenderTargetView*  g_mainRenderTargetView = nullptr;
 static ID3D11BlendState*        g_pBlendState = nullptr;
 static NOTIFYICONDATAW          g_nid = {};
+static ImGuiContext*            g_mainImGuiContext = nullptr;
 
 bool CreateDeviceD3D(HWND hWnd);
 void CleanupDeviceD3D();
@@ -41,6 +43,9 @@ void CleanupRenderTarget();
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (g_mainImGuiContext) {
+        ImGui::SetCurrentContext(g_mainImGuiContext);
+    }
     if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
         return true;
 
@@ -83,7 +88,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             AppendMenuW(hMenu, MF_STRING, ID_TRAY_MAP, L"切换地图变种 (Ctrl+Shift+[ / Ctrl+[)");
             AppendMenuW(hMenu, MF_STRING, ID_TRAY_ARTIFACT, L"切换神器点位 (Ctrl+Shift+\\ / Ctrl+\\)");
             AppendMenuW(hMenu, MF_STRING, ID_TRAY_COMMANDER, L"指挥官替换器");
-            AppendMenuW(hMenu, MF_STRING, ID_TRAY_SETTINGS, L"界面与Toast设置 (Settings)");
+            AppendMenuW(hMenu, MF_STRING, ID_TRAY_SETTINGS, L"设置");
             AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
             AppendMenuW(hMenu, MF_STRING, ID_TRAY_EXIT, L"退出 (Exit)");
 
@@ -119,12 +124,16 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             OverlayUI::Instance().ToggleCommanderSelector();
             break;
         case ID_TRAY_SETTINGS:
-            OverlayUI::Instance().ToggleSettings();
+            SettingsWindow::Instance().Toggle();
             break;
         case ID_TRAY_EXIT:
             PostQuitMessage(0);
             break;
         }
+        return 0;
+
+    case WM_CLOSE:
+        DestroyWindow(hWnd);
         return 0;
 
     case WM_DESTROY:
@@ -158,8 +167,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     int screen_w = GetSystemMetrics(SM_CXSCREEN);
     int screen_h = GetSystemMetrics(SM_CYSCREEN);
 
-    int win_w = cfg.main_window_width > 120 ? cfg.main_window_width : 175;
-    int win_h = cfg.main_window_height > 120 ? cfg.main_window_height : 218;
+    int win_w = cfg.main_window_width > 120 ? cfg.main_window_width : 173;
+    int win_h = cfg.main_window_height > 120 ? cfg.main_window_height : 340;
     int win_x = cfg.main_window_x;
     int win_y = cfg.main_window_y;
 
@@ -237,6 +246,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     // 9. Setup ImGui context
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    g_mainImGuiContext = ImGui::GetCurrentContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.IniFilename = nullptr;
@@ -281,6 +291,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
 
+    // Initialize standalone Settings Window (centered, draggable, independent DX11 context)
+    SettingsWindow::Instance().Init(hInstance, g_pd3dDevice, g_pd3dDeviceContext);
+    ImGui::SetCurrentContext(g_mainImGuiContext);
+
     // Main Loop
     bool done = false;
     LARGE_INTEGER freq, last_time;
@@ -303,7 +317,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
         last_time = current_time;
         if (delta_time <= 0.0f) delta_time = 0.016f;
 
-        // Start ImGui frame
+        // Start ImGui frame for Main Window
+        ImGui::SetCurrentContext(g_mainImGuiContext);
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
@@ -327,6 +342,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
 
         // Present with VSync
         g_pSwapChain->Present(1, 0);
+
+        // Render standalone Settings Window if visible
+        if (SettingsWindow::Instance().IsVisible()) {
+            SettingsWindow::Instance().Render(delta_time);
+            ImGui::SetCurrentContext(g_mainImGuiContext);
+        }
     }
 
     // Cleanup
@@ -335,15 +356,23 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     HotkeyManager::Instance().UnregisterAll(hwnd);
     ArtifactViewer::Instance().Shutdown();
     LockWindow::Instance().Shutdown();
+    SettingsWindow::Instance().Shutdown();
 
-    ImGui_ImplDX11_Shutdown();
-    ImGui_ImplWin32_Shutdown();
-    ImGui::DestroyContext();
+    if (g_mainImGuiContext) {
+        ImGui::SetCurrentContext(g_mainImGuiContext);
+        ImGui_ImplDX11_Shutdown();
+        ImGui_ImplWin32_Shutdown();
+        ImGui::DestroyContext(g_mainImGuiContext);
+        g_mainImGuiContext = nullptr;
+    }
 
     if (g_pBlendState) { g_pBlendState->Release(); g_pBlendState = nullptr; }
     CleanupRenderTarget();
     CleanupDeviceD3D();
-    DestroyWindow(hwnd);
+
+    if (hwnd && IsWindow(hwnd)) {
+        DestroyWindow(hwnd);
+    }
     UnregisterClassW(wc.lpszClassName, wc.hInstance);
     CoUninitialize();
 

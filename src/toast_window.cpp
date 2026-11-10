@@ -185,7 +185,7 @@ void ToastWindow::RenderToast() {
     HGDIOBJ hOldFont = SelectObject(hdcMem, hFont);
 
     // Compose display text
-    std::string text_str = "⏱ " + m_time_text + "  " + m_event_text;
+    std::string text_str = "[ " + m_time_text + " ]  " + m_event_text;
     if (!m_tier_text.empty()) {
         text_str += "  [" + m_tier_text + "]";
     }

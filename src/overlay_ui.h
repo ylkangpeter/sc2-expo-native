@@ -37,9 +37,11 @@ public:
     void ToggleCommanderSelector();
     void SetCommanderSelectorOpen(bool open);
 
-    bool IsSettingsOpen() const { return m_show_settings; }
+    bool IsSettingsOpen() const;
     void ToggleSettings();
     void SetSettingsOpen(bool open);
+
+    void UpdateWindowDimensions();
 
     std::string GetCurrentMap() const { return m_current_map; }
 
@@ -49,14 +51,11 @@ private:
     void RenderMainHUD(float delta_time);
     void RenderAlertBanner(float delta_time);
     void RenderCommanderSelector(float delta_time);
-    void RenderSettings(float delta_time);
 
     void UpdateClickThroughState();
-    void UpdateWindowDimensions();
 
     bool m_locked = true; // default LOCKED (click-through) on startup
     bool m_show_commander_selector = false;
-    bool m_show_settings = false;
     std::string m_current_map;
     std::string m_current_region = "KR";
     std::string m_current_troop = "classic_infantry-旧世步兵团";
