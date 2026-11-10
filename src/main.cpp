@@ -18,6 +18,7 @@
 #include "artifact_viewer.h"
 #include "lock_window.h"
 #include "toast_window.h"
+#include "mutator_alert_window.h"
 #include "settings_window.h"
 
 #define WM_TRAYICON (WM_USER + 101)
@@ -243,6 +244,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
 
     ArtifactViewer::Instance().Init(hInstance);
     ToastWindow::Instance().Init(hInstance);
+    MutatorAlertWindow::Instance().Init(hInstance);
     HotkeyManager::Instance().RegisterAll(hwnd);
     OverlayUI::Instance().Init(g_pd3dDevice, hwnd);
     Sc2Client::Instance().Start();
@@ -368,6 +370,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
             ToastWindow::Instance().Update(delta_time);
         }
 
+        MutatorAlertWindow::Instance().Update(delta_time);
+
         // 2. Render standalone Settings Window if visible
         if (settings_vis) {
             SettingsWindow::Instance().Render(delta_time);
@@ -385,6 +389,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     Sc2Client::Instance().Stop();
     HotkeyManager::Instance().UnregisterAll(hwnd);
     ArtifactViewer::Instance().Shutdown();
+    ToastWindow::Instance().Shutdown();
+    MutatorAlertWindow::Instance().Shutdown();
     LockWindow::Instance().Shutdown();
     SettingsWindow::Instance().Shutdown();
 

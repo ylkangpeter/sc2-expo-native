@@ -108,16 +108,106 @@ void ScheduleManager::LoadAllMaps(const std::string& lang) {
     std::sort(m_map_list.begin(), m_map_list.end());
 }
 
+struct CanonicalMapEntry {
+    const char* id;
+    const char* zh;
+    const char* en;
+    const char* variant_group; // "temple_of_the_past", "void_thrashing", or nullptr
+    const char* variant_alt_id; // id of the paired variant, or nullptr
+};
+
+static const CanonicalMapEntry kMapEntries[] = {
+    { "chain_of_ascension",     "升格之恋",     "Chain of Ascension",      nullptr, nullptr },
+    { "cradle_of_death",        "死亡摇篮",     "Cradle of Death",         nullptr, nullptr },
+    { "dead_of_night",          "亡者之夜",     "Dead of Night",           nullptr, nullptr },
+    { "lock_and_load",          "天界封锁",     "Lock & Load",             nullptr, nullptr },
+    { "malwarfare",             "净网行动",     "Malwarfare",              nullptr, nullptr },
+    { "miner_evacuation",       "营救矿工",     "Miner Evacuation",        nullptr, nullptr },
+    { "mist_opportunities",     "机会渺茫",     "Mist Opportunities",      nullptr, nullptr },
+    { "oblivion_express",       "湮灭快车",     "Oblivion Express",        nullptr, nullptr },
+    { "part_and_parcel",        "聚铁成兵",     "Part and Parcel",         nullptr, nullptr },
+    { "rifts_to_korhal",        "克哈裂痕",     "Rifts to Korhal",         nullptr, nullptr },
+    { "scythe_of_amon",         "黑暗杀星",     "Scythe of Amon",          nullptr, nullptr },
+    { "temple_of_the_past_a",   "往日神庙-A",   "Temple of the Past-A",    "temple_of_the_past", "temple_of_the_past_b" },
+    { "temple_of_the_past_b",   "往日神庙-B",   "Temple of the Past-B",    "temple_of_the_past", "temple_of_the_past_a" },
+    { "the_vermillion_problem", "熔火危机",     "The Vermillion Problem",  nullptr, nullptr },
+    { "void_launch",            "虚空降临",     "Void Launch",             nullptr, nullptr },
+    { "void_thrashing_left",    "虚空撕裂-左",   "Void Thrashing-Left",     "void_thrashing", "void_thrashing_right" },
+    { "void_thrashing_right",   "虚空撕裂-右",   "Void Thrashing-Right",    "void_thrashing", "void_thrashing_left" },
+};
+
+std::string ScheduleManager::GetCanonicalMapId(const std::string& any_name) const {
+    if (any_name.empty()) return "";
+    for (const auto& entry : kMapEntries) {
+        if (any_name == entry.id || any_name == entry.zh || any_name == entry.en) {
+            return entry.id;
+        }
+    }
+    if (any_name == "往日神庙" || any_name == "Temple of the Past") return "temple_of_the_past_a";
+    if (any_name == "虚空撕裂" || any_name == "Void Thrashing") return "void_thrashing_left";
+    if (any_name.find("往日神庙") != std::string::npos || any_name.find("Temple of the Past") != std::string::npos) {
+        if (any_name.find('B') != std::string::npos || any_name.find('b') != std::string::npos) return "temple_of_the_past_b";
+        return "temple_of_the_past_a";
+    }
+    if (any_name.find("虚空撕裂") != std::string::npos || any_name.find("Void Thrashing") != std::string::npos) {
+        if (any_name.find("右") != std::string::npos || any_name.find("Right") != std::string::npos) return "void_thrashing_right";
+        return "void_thrashing_left";
+    }
+    for (const auto& entry : kMapEntries) {
+        if (any_name.find(entry.zh) != std::string::npos || any_name.find(entry.en) != std::string::npos) {
+            return entry.id;
+        }
+    }
+    return any_name;
+}
+
+std::string ScheduleManager::GetMapDisplayName(const std::string& any_name, const std::string& target_lang) const {
+    std::string cid = GetCanonicalMapId(any_name);
+    for (const auto& entry : kMapEntries) {
+        if (cid == entry.id) {
+            return (target_lang == "en") ? entry.en : entry.zh;
+        }
+    }
+    return any_name;
+}
+
+std::string ScheduleManager::NormalizeToCurrentLanguage(const std::string& any_name) const {
+    std::string lang = m_current_lang.empty() ? "zh" : m_current_lang;
+    return GetMapDisplayName(any_name, lang);
+}
+
 const std::vector<ScheduleRow>& ScheduleManager::GetSchedule(const std::string& map_name) {
-    auto it = m_schedules.find(map_name);
+    std::string cid = GetCanonicalMapId(map_name);
+    auto it = m_schedules.find(cid);
+    if (it != m_schedules.end()) {
+        return it->second;
+    }
+    it = m_schedules.find(map_name);
     if (it != m_schedules.end()) {
         return it->second;
     }
 
     std::vector<ScheduleRow> rows;
-    std::string file_path = "resources/maps/" + m_current_lang + "/" + map_name;
+    std::string lang = m_current_lang.empty() ? "zh" : m_current_lang;
+    std::string localized_name = GetMapDisplayName(map_name, lang);
+
+    std::string file_path = "resources/maps/" + lang + "/" + localized_name;
     std::wstring wpath = Utf8ToWide(file_path);
     std::ifstream file(wpath.c_str());
+
+    if (!file.is_open()) {
+        file_path = "resources/maps/" + lang + "/" + map_name;
+        wpath = Utf8ToWide(file_path);
+        file.open(wpath.c_str());
+    }
+
+    if (!file.is_open()) {
+        std::string zh_name = GetMapDisplayName(map_name, "zh");
+        file_path = "resources/maps/zh/" + zh_name;
+        wpath = Utf8ToWide(file_path);
+        file.open(wpath.c_str());
+    }
+
     if (!file.is_open()) {
         file_path = "resources/maps/zh/" + map_name;
         wpath = Utf8ToWide(file_path);
@@ -125,8 +215,9 @@ const std::vector<ScheduleRow>& ScheduleManager::GetSchedule(const std::string& 
     }
 
     if (!file.is_open()) {
+        m_schedules[cid] = rows;
         m_schedules[map_name] = rows;
-        return m_schedules[map_name];
+        return m_schedules[cid];
     }
 
     std::string line;
@@ -178,11 +269,36 @@ const std::vector<ScheduleRow>& ScheduleManager::GetSchedule(const std::string& 
     }
 
     m_schedules[map_name] = rows;
-    return m_schedules[map_name];
+    m_schedules[cid] = rows;
+    m_schedules[localized_name] = rows;
+    return m_schedules[cid];
 }
 
 bool ScheduleManager::GetVariant(const std::string& map_name, MapVariant& out_variant) const {
     if (map_name.empty()) return false;
+
+    std::string cid = GetCanonicalMapId(map_name);
+    std::string lang = m_current_lang.empty() ? "zh" : m_current_lang;
+
+    for (const auto& entry : kMapEntries) {
+        if (entry.id == cid && entry.variant_group != nullptr) {
+            if (std::string(entry.variant_group) == "temple_of_the_past") {
+                out_variant.type = "AB";
+                out_variant.prefix = (lang == "en") ? "Temple of the Past" : "往日神庙";
+                out_variant.opt1 = "A";
+                out_variant.opt2 = "B";
+                out_variant.current_suffix = (cid == "temple_of_the_past_b") ? "B" : "A";
+                return true;
+            } else if (std::string(entry.variant_group) == "void_thrashing") {
+                out_variant.type = "LR";
+                out_variant.prefix = (lang == "en") ? "Void Thrashing" : "虚空撕裂";
+                out_variant.opt1 = (lang == "en") ? "Left" : "左";
+                out_variant.opt2 = (lang == "en") ? "Right" : "右";
+                out_variant.current_suffix = (cid == "void_thrashing_right") ? out_variant.opt2 : out_variant.opt1;
+                return true;
+            }
+        }
+    }
 
     size_t dash = map_name.rfind('-');
     if (dash == std::string::npos) {
@@ -225,6 +341,22 @@ bool ScheduleManager::GetVariant(const std::string& map_name, MapVariant& out_va
 }
 
 std::string ScheduleManager::SwitchVariant(const std::string& current_map) const {
+    std::string cid = GetCanonicalMapId(current_map);
+    std::string lang = m_current_lang.empty() ? "zh" : m_current_lang;
+
+    for (const auto& entry : kMapEntries) {
+        if (entry.id == cid && entry.variant_alt_id != nullptr) {
+            std::string alt_id = entry.variant_alt_id;
+            std::string target_name = GetMapDisplayName(alt_id, lang);
+            for (const auto& m : m_map_list) {
+                if (m == target_name || GetCanonicalMapId(m) == alt_id) {
+                    return m;
+                }
+            }
+            return target_name;
+        }
+    }
+
     MapVariant var;
     if (!GetVariant(current_map, var)) return current_map;
 

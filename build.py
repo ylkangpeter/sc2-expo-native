@@ -152,6 +152,7 @@ def build_tests():
         "src/schedule_manager.cpp",
         "src/troop_manager.cpp",
         "src/mutator_manager.cpp",
+        "src/mutator_alert_window.cpp",
         "src/commander_manager.cpp",
         "src/texture_loader.cpp",
         "src/artifact_viewer.cpp"

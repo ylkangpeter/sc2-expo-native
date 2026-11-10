@@ -59,7 +59,7 @@ void OverlayUI::Init(ID3D11Device* device, HWND hwnd) {
 void OverlayUI::UpdateClickThroughState() {
     if (!m_hwnd) return;
     LONG_PTR ex = GetWindowLongPtrW(m_hwnd, GWL_EXSTYLE);
-    if (m_locked) {
+    if (m_locked && !m_show_commander_selector) {
         ex |= WS_EX_TRANSPARENT;
     } else {
         ex &= ~WS_EX_TRANSPARENT;
@@ -131,6 +131,8 @@ void OverlayUI::ToggleMapVariant() {
         m_current_map = switched;
         Sc2Client::Instance().SetManualMap(switched);
         m_last_active_row = -1;
+        m_last_toast_seconds = -1;
+        m_last_toast_map = m_current_map;
 
         if (ArtifactViewer::Instance().IsVisible()) {
             if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
@@ -144,6 +146,12 @@ void OverlayUI::ToggleMapVariant() {
 
 void OverlayUI::SetCommanderSelectorOpen(bool open) {
     m_show_commander_selector = open;
+    if (m_show_commander_selector) {
+        if (m_locked) {
+            SetLocked(false);
+        }
+    }
+    UpdateClickThroughState();
     UpdateWindowDimensions();
 }
 
@@ -173,17 +181,40 @@ void OverlayUI::TriggerToast(const ScheduleRow& row, float duration) {
 void OverlayUI::Render(float delta_time) {
     // 1. Sync SC2 State
     Sc2GameState state = Sc2Client::Instance().GetState();
-    if (!state.current_map.empty() && state.current_map != m_current_map) {
-        m_current_map = state.current_map;
-        m_last_active_row = -1;
-        if (ArtifactViewer::Instance().IsVisible()) {
-            if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
-                ArtifactViewer::Instance().ShowMap(m_current_map);
-            } else {
-                ArtifactViewer::Instance().Hide();
+    auto& cfg = AppConfig::Instance();
+
+    if (!state.current_map.empty()) {
+        std::string localized_map = ScheduleManager::Instance().NormalizeToCurrentLanguage(state.current_map);
+        if (!localized_map.empty() && localized_map != m_current_map) {
+            m_current_map = localized_map;
+            m_last_active_row = -1;
+            m_last_toast_seconds = -1;
+            m_last_toast_map = m_current_map;
+            if (ArtifactViewer::Instance().IsVisible()) {
+                if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
+                    ArtifactViewer::Instance().ShowMap(m_current_map);
+                } else {
+                    ArtifactViewer::Instance().Hide();
+                }
             }
         }
     }
+
+    // Reset wave alert deduplication state on new game, time rewind, map change, or non-in-game state
+    bool new_game = Sc2Client::Instance().ConsumeNewGameEvent() || state.is_new_game_event;
+    bool time_rewound = (m_last_game_seconds > 0 && state.current_seconds < m_last_game_seconds);
+    bool map_changed = (m_last_toast_map != m_current_map);
+    bool not_in_game = (state.screen_state != "in_game");
+
+    if (new_game || time_rewound || map_changed || not_in_game) {
+        m_last_toast_seconds = -1;
+        m_last_toast_map = m_current_map;
+        m_last_active_row = -1;
+        if (new_game || time_rewound || map_changed) {
+            MutatorManager::Instance().ResetAlerts();
+        }
+    }
+    m_last_game_seconds = state.current_seconds;
 
     // Update mutators & toast window
     MutatorManager::Instance().Update(state.current_seconds, delta_time);
@@ -268,6 +299,8 @@ void OverlayUI::RenderMainHUD(float delta_time) {
                     m_current_map = m;
                     Sc2Client::Instance().SetManualMap(m);
                     m_last_active_row = -1;
+                    m_last_toast_seconds = -1;
+                    m_last_toast_map = m_current_map;
                     if (ArtifactViewer::Instance().IsVisible()) {
                         if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
                             ArtifactViewer::Instance().ShowMap(m_current_map);
@@ -290,6 +323,8 @@ void OverlayUI::RenderMainHUD(float delta_time) {
                 m_current_map = var.prefix + "-" + var.opt1;
                 Sc2Client::Instance().SetManualMap(m_current_map);
                 m_last_active_row = -1;
+                m_last_toast_seconds = -1;
+                m_last_toast_map = m_current_map;
                 if (ArtifactViewer::Instance().IsVisible()) {
                     if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
                         ArtifactViewer::Instance().ShowMap(m_current_map);
@@ -310,6 +345,8 @@ void OverlayUI::RenderMainHUD(float delta_time) {
                 m_current_map = var.prefix + "-" + var.opt2;
                 Sc2Client::Instance().SetManualMap(m_current_map);
                 m_last_active_row = -1;
+                m_last_toast_seconds = -1;
+                m_last_toast_map = m_current_map;
                 if (ArtifactViewer::Instance().IsVisible()) {
                     if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
                         ArtifactViewer::Instance().ShowMap(m_current_map);
@@ -436,14 +473,6 @@ void OverlayUI::RenderMainHUD(float delta_time) {
             ImGui::SameLine();
         }
 
-        // Active Mutator Alerts (only break line if there are alerts)
-        const auto& alerts = MutatorManager::Instance().GetActiveAlerts();
-        if (!alerts.empty()) {
-            ImGui::NewLine();
-            for (const auto& a : alerts) {
-                ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "[!] %s", a.message.c_str());
-            }
-        }
 
         // --- Row 7: Action Buttons (Expand Commander / Artifact) ---
         if (!m_locked) {
