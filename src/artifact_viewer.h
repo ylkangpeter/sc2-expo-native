@@ -30,5 +30,5 @@ private:
     HWND m_hwnd = nullptr;
     HINSTANCE m_hInstance = nullptr;
     bool m_visible = false;
-    std::string m_last_map = "死亡摇篮";
+    std::string m_last_map = "";
 };

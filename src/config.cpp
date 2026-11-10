@@ -37,8 +37,12 @@ bool AppConfig::Load(const std::string& path) {
         if (j.contains("main_window_width")) main_window_width = j["main_window_width"].get<int>();
         if (j.contains("main_window_height")) main_window_height = j["main_window_height"].get<int>();
         if (j.contains("table_height")) table_height = j["table_height"].get<int>();
+        if (j.contains("font_scale")) font_scale = j["font_scale"].get<float>();
         if (j.contains("time_alert_seconds")) time_alert_seconds = j["time_alert_seconds"].get<int>();
         if (j.contains("toast_allowed")) toast_allowed = j["toast_allowed"].get<bool>();
+        if (j.contains("toast_position_y")) toast_position_y = j["toast_position_y"].get<float>();
+        if (j.contains("toast_scale")) toast_scale = j["toast_scale"].get<float>();
+        if (j.contains("toast_duration_ms")) toast_duration_ms = j["toast_duration_ms"].get<int>();
         if (j.contains("blacklist") && j["blacklist"].is_array()) {
             blacklist = j["blacklist"].get<std::vector<std::string>>();
         }
@@ -61,8 +65,12 @@ bool AppConfig::Save(const std::string& path) const {
         j["main_window_width"] = main_window_width;
         j["main_window_height"] = main_window_height;
         j["table_height"] = table_height;
+        j["font_scale"] = font_scale;
         j["time_alert_seconds"] = time_alert_seconds;
         j["toast_allowed"] = toast_allowed;
+        j["toast_position_y"] = toast_position_y;
+        j["toast_scale"] = toast_scale;
+        j["toast_duration_ms"] = toast_duration_ms;
         j["blacklist"] = blacklist;
 
         std::ofstream file(path);

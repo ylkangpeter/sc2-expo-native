@@ -60,8 +60,8 @@ std::string ArtifactViewer::ResolveArtifactMap(const std::string& input_map) con
         if (input_map.find("Dead of Night") != std::string::npos) return "亡者之夜";
         if (input_map.find("Vermillion") != std::string::npos) return "熔火危机";
     }
-    // Fallback: if input map doesn't have an artifact, return last viewed or default to 死亡摇篮
-    return m_last_map.empty() ? kArtifactMaps[0] : m_last_map;
+    // No artifact for this map
+    return "";
 }
 
 void ArtifactViewer::ShowNextMap() {
@@ -117,7 +117,15 @@ void ArtifactViewer::Shutdown() {
 
 void ArtifactViewer::ShowMap(const std::string& map_name) {
     if (!m_hwnd) return;
+    if (!HasArtifact(map_name)) {
+        Hide();
+        return;
+    }
     std::string target = ResolveArtifactMap(map_name);
+    if (target.empty()) {
+        Hide();
+        return;
+    }
     if (RenderToLayeredWindow(target)) {
         m_visible = true;
         m_last_map = target;
@@ -136,28 +144,33 @@ void ArtifactViewer::Toggle(const std::string& map_name) {
         // If current map has an artifact and it's different from the one currently shown, switch to it!
         if (HasArtifact(map_name)) {
             std::string target = ResolveArtifactMap(map_name);
-            if (target != m_last_map) {
+            if (!target.empty() && target != m_last_map) {
                 ShowMap(target);
                 return;
             }
         }
         Hide();
     } else {
+        if (!HasArtifact(map_name)) {
+            // Strictly do not show anything if current map has no artifact
+            return;
+        }
         ShowMap(map_name);
     }
 }
 
 bool ArtifactViewer::RenderToLayeredWindow(const std::string& map_name) {
+    if (!HasArtifact(map_name)) {
+        return false;
+    }
     const auto& cfg = AppConfig::Instance();
     std::string target = ResolveArtifactMap(map_name);
+    if (target.empty()) {
+        return false;
+    }
     std::string webp_path = "resources/artifacts/" + target + ".webp";
 
     std::wstring wpath = Utf8ToWide(webp_path);
-    if (GetFileAttributesW(wpath.c_str()) == INVALID_FILE_ATTRIBUTES) {
-        target = kArtifactMaps[0];
-        webp_path = "resources/artifacts/" + target + ".webp";
-        wpath = Utf8ToWide(webp_path);
-    }
     if (GetFileAttributesW(wpath.c_str()) == INVALID_FILE_ATTRIBUTES) {
         return false;
     }

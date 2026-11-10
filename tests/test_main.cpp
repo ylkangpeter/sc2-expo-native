@@ -12,6 +12,7 @@
 #include "mutator_manager.h"
 #include "commander_manager.h"
 #include "texture_loader.h"
+#include "artifact_viewer.h"
 
 static int g_tests_run = 0;
 static int g_tests_passed = 0;
@@ -400,6 +401,41 @@ void TestTextureLoader() {
     CoUninitialize();
 }
 
+void TestArtifactViewer() {
+    std::cout << "Running TestArtifactViewer..." << std::endl;
+    ArtifactViewer& av = ArtifactViewer::Instance();
+
+    // 6 Zeratul maps have artifacts
+    TEST_ASSERT(av.HasArtifact("死亡摇篮"), "死亡摇篮 should have artifact");
+    TEST_ASSERT(av.HasArtifact("亡者之夜"), "亡者之夜 should have artifact");
+    TEST_ASSERT(av.HasArtifact("湮灭快车"), "湮灭快车 should have artifact");
+    TEST_ASSERT(av.HasArtifact("净网行动"), "净网行动 should have artifact");
+    TEST_ASSERT(av.HasArtifact("营救矿工"), "营救矿工 should have artifact");
+    TEST_ASSERT(av.HasArtifact("熔火危机"), "熔火危机 should have artifact");
+
+    // English names
+    TEST_ASSERT(av.HasArtifact("Cradle of Death"), "Cradle of Death should have artifact");
+    TEST_ASSERT(av.HasArtifact("Dead of Night"), "Dead of Night should have artifact");
+
+    // Other maps MUST NOT have artifacts
+    TEST_ASSERT(!av.HasArtifact("克哈裂痕"), "克哈裂痕 should NOT have artifact");
+    TEST_ASSERT(!av.HasArtifact("往日神庙-A"), "往日神庙-A should NOT have artifact");
+    TEST_ASSERT(!av.HasArtifact("往日神庙-B"), "往日神庙-B should NOT have artifact");
+    TEST_ASSERT(!av.HasArtifact("天界封锁"), "天界封锁 should NOT have artifact");
+    TEST_ASSERT(!av.HasArtifact("虚空撕裂-左"), "虚空撕裂-左 should NOT have artifact");
+    TEST_ASSERT(!av.HasArtifact("黑暗杀星"), "黑暗杀星 should NOT have artifact");
+
+    // Resolution: non-artifact maps MUST resolve to empty string (no fallback to default image!)
+    TEST_ASSERT(av.ResolveArtifactMap("克哈裂痕").empty(), "ResolveArtifactMap on non-artifact map must return empty string");
+    TEST_ASSERT(av.ResolveArtifactMap("往日神庙-A").empty(), "ResolveArtifactMap on non-artifact map must return empty string");
+    TEST_ASSERT(av.ResolveArtifactMap("天界封锁").empty(), "ResolveArtifactMap on non-artifact map must return empty string");
+
+    // Artifact maps resolve to canonical names
+    TEST_ASSERT(av.ResolveArtifactMap("亡者之夜") == "亡者之夜", "ResolveArtifactMap 亡者之夜");
+    TEST_ASSERT(av.ResolveArtifactMap("Dead of Night") == "亡者之夜", "ResolveArtifactMap Dead of Night");
+    TEST_ASSERT(av.ResolveArtifactMap("死亡摇篮") == "死亡摇篮", "ResolveArtifactMap 死亡摇篮");
+}
+
 int main() {
     std::cout << "========================================" << std::endl;
     std::cout << "   SC2 Expo Native Verification Suite   " << std::endl;
@@ -412,6 +448,7 @@ int main() {
     TestMutatorManager();
     TestCommanderManager();
     TestTextureLoader();
+    TestArtifactViewer();
 
     std::cout << "========================================" << std::endl;
     std::cout << "Results: " << g_tests_passed << "/" << g_tests_run << " tests passed." << std::endl;

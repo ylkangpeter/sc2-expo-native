@@ -29,14 +29,16 @@ struct AppConfig {
     int main_window_x = 0;
     int main_window_y = 300;
     int main_window_width = 175;
-    int main_window_height = 330;
+    int main_window_height = 218; // Compact: tight against 5 mutator icons
     int table_height = 135;
     int table_font_size = 13;
+    float font_scale = 1.0f;
 
     // Toast configuration
     bool toast_allowed = true;
-    int toast_duration_ms = 10000;
+    int toast_duration_ms = 8000;
     float toast_position_y = 0.88f; // ratio from top of screen
+    float toast_scale = 1.0f;
 
     // Time alert threshold in seconds
     int time_alert_seconds = 30;

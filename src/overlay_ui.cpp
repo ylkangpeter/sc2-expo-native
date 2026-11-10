@@ -8,6 +8,7 @@
 #include "hotkeys.h"
 #include "artifact_viewer.h"
 #include "lock_window.h"
+#include "toast_window.h"
 #include <windows.h>
 #include <shellapi.h>
 #include <algorithm>
@@ -67,14 +68,56 @@ void OverlayUI::UpdateClickThroughState() {
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 }
 
+void OverlayUI::UpdateWindowDimensions() {
+    if (!m_hwnd) return;
+    const auto& cfg = AppConfig::Instance();
+
+    int base_w = cfg.main_window_width > 120 ? cfg.main_window_width : 175;
+    int base_h = cfg.main_window_height > 120 ? cfg.main_window_height : 218;
+
+    int target_w = base_w;
+    int target_h = m_locked ? base_h : (base_h + 32);
+
+    if (m_show_commander_selector) {
+        target_w = 920;
+        target_h = std::max(target_h, 330);
+    } else if (m_show_settings) {
+        target_w = base_w + 320;
+        target_h = std::max(target_h, 360);
+    }
+
+    SetWindowPos(m_hwnd, HWND_TOPMOST, 0, 0, target_w, target_h,
+                 SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER);
+}
+
+void OverlayUI::SetSettingsOpen(bool open) {
+    m_show_settings = open;
+    if (m_show_settings) {
+        if (m_locked) {
+            SetLocked(false);
+        }
+    }
+    UpdateWindowDimensions();
+}
+
+void OverlayUI::ToggleSettings() {
+    SetSettingsOpen(!m_show_settings);
+}
+
 void OverlayUI::SetLocked(bool locked) {
     m_locked = locked;
     UpdateClickThroughState();
     LockWindow::Instance().SetLocked(m_locked);
 
-    if (m_locked && m_show_commander_selector) {
-        SetCommanderSelectorOpen(false);
+    if (m_locked) {
+        if (m_show_commander_selector) {
+            m_show_commander_selector = false;
+        }
+        if (m_show_settings) {
+            m_show_settings = false;
+        }
     }
+    UpdateWindowDimensions();
 }
 
 void OverlayUI::ToggleLock() {
@@ -82,6 +125,10 @@ void OverlayUI::ToggleLock() {
 }
 
 void OverlayUI::ToggleArtifact() {
+    if (!ArtifactViewer::Instance().HasArtifact(m_current_map)) {
+        ArtifactViewer::Instance().Hide();
+        return;
+    }
     ArtifactViewer::Instance().Toggle(m_current_map);
 }
 
@@ -93,19 +140,21 @@ void OverlayUI::ToggleMapVariant() {
         m_last_active_row = -1;
 
         if (ArtifactViewer::Instance().IsVisible()) {
-            ArtifactViewer::Instance().ShowMap(m_current_map);
+            if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
+                ArtifactViewer::Instance().ShowMap(m_current_map);
+            } else {
+                ArtifactViewer::Instance().Hide();
+            }
         }
     }
 }
 
 void OverlayUI::SetCommanderSelectorOpen(bool open) {
     m_show_commander_selector = open;
-    if (!m_hwnd) return;
-
-    int target_w = m_show_commander_selector ? 920 : 175;
-    int target_h = 330;
-    SetWindowPos(m_hwnd, HWND_TOPMOST, 0, 0, target_w, target_h,
-                 SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER);
+    if (m_show_commander_selector && m_show_settings) {
+        m_show_settings = false;
+    }
+    UpdateWindowDimensions();
 }
 
 void OverlayUI::ToggleCommanderSelector() {
@@ -127,6 +176,8 @@ void OverlayUI::TriggerToast(const ScheduleRow& row, float duration) {
             m_toast.regular_unit_icons = TroopManager::Instance().GetUnitsForTier(m_current_troop, t_num);
         } catch (...) {}
     }
+
+    ToastWindow::Instance().ShowToast(row, m_current_troop, duration);
 }
 
 void OverlayUI::Render(float delta_time) {
@@ -136,17 +187,25 @@ void OverlayUI::Render(float delta_time) {
         m_current_map = state.current_map;
         m_last_active_row = -1;
         if (ArtifactViewer::Instance().IsVisible()) {
-            ArtifactViewer::Instance().ShowMap(m_current_map);
+            if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
+                ArtifactViewer::Instance().ShowMap(m_current_map);
+            } else {
+                ArtifactViewer::Instance().Hide();
+            }
         }
     }
 
-    // Update mutators
+    // Update mutators & toast window
     MutatorManager::Instance().Update(state.current_seconds, delta_time);
+    ToastWindow::Instance().Update(delta_time);
 
     // 2. Render Windows
     RenderMainHUD(delta_time);
     if (m_show_commander_selector) {
         RenderCommanderSelector(delta_time);
+    }
+    if (m_show_settings) {
+        RenderSettings(delta_time);
     }
 }
 
@@ -155,9 +214,11 @@ void OverlayUI::RenderMainHUD(float delta_time) {
     Sc2GameState state = Sc2Client::Instance().GetState();
     ImGuiIO& io = ImGui::GetIO();
 
-    // Compact window width matching 175px
+    int hud_w = cfg.main_window_width > 120 ? cfg.main_window_width : 175;
+    int hud_h = m_locked ? cfg.main_window_height : (cfg.main_window_height + 32);
+
     ImGui::SetNextWindowPos(ImVec2(0, 0));
-    ImGui::SetNextWindowSize(ImVec2(175.0f, io.DisplaySize.y));
+    ImGui::SetNextWindowSize(ImVec2((float)hud_w, (float)hud_h));
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
@@ -171,40 +232,31 @@ void OverlayUI::RenderMainHUD(float delta_time) {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(5.0f, 5.0f));
 
     if (ImGui::Begin("MainHUD", nullptr, flags)) {
-        // --- Header Row: Drag Bar & Close Button ---
-        // (Clickable lock toggle is now the external LockWindow right above the HUD)
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.24f, 0.3f, 0.6f));
-        ImGui::Button("::: SC2 Timer :::", ImVec2(136, 22));
-        if (ImGui::IsItemActive() && ImGui::IsMouseDragging(0)) {
+        float base_scale = cfg.font_scale > 0.5f ? cfg.font_scale : 1.0f;
+        ImGui::SetWindowFontScale(base_scale);
+
+        // Drag window by clicking and dragging on the background when unlocked
+        if (!m_locked && ImGui::IsWindowHovered() && ImGui::IsMouseDragging(0) && !ImGui::IsAnyItemActive()) {
             ReleaseCapture();
             SendMessageW(m_hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
         }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("按住可拖动窗口位置");
-        }
-        ImGui::PopStyleColor();
 
-        ImGui::SameLine();
-        // Close button
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5f, 0.12f, 0.12f, 0.8f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.8f, 0.1f, 0.1f, 1.0f));
-        if (ImGui::Button("X", ImVec2(22, 22))) {
-            PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
-        }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("退出程序");
-        }
-        ImGui::PopStyleColor(2);
-
-        // --- Row 2: Game Time Display ---
+        // --- Row 1: Game Time Display ---
         std::string time_str = ScheduleManager::FormatSecondsToTime(state.current_seconds);
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 1.0f, 0.5f, 1.0f));
-        ImGui::SetWindowFontScale(1.15f);
+        ImGui::SetWindowFontScale(base_scale * 1.15f);
         ImGui::Text(" Time: %s", time_str.c_str());
-        ImGui::SetWindowFontScale(1.0f);
+        if (!m_locked && ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("按住可拖动窗口位置");
+            if (ImGui::IsMouseDragging(0)) {
+                ReleaseCapture();
+                SendMessageW(m_hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+            }
+        }
+        ImGui::SetWindowFontScale(base_scale);
         ImGui::PopStyleColor();
 
-        // --- Row 3: Map selection & Variant buttons ---
+        // --- Row 2: Map selection & Variant buttons ---
         const auto& maps = ScheduleManager::Instance().GetMapList();
         MapVariant var;
         bool has_variant = ScheduleManager::Instance().GetVariant(m_current_map, var);
@@ -218,7 +270,11 @@ void OverlayUI::RenderMainHUD(float delta_time) {
                     Sc2Client::Instance().SetManualMap(m);
                     m_last_active_row = -1;
                     if (ArtifactViewer::Instance().IsVisible()) {
-                        ArtifactViewer::Instance().ShowMap(m_current_map);
+                        if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
+                            ArtifactViewer::Instance().ShowMap(m_current_map);
+                        } else {
+                            ArtifactViewer::Instance().Hide();
+                        }
                     }
                 }
                 if (is_selected) ImGui::SetItemDefaultFocus();
@@ -236,7 +292,11 @@ void OverlayUI::RenderMainHUD(float delta_time) {
                 Sc2Client::Instance().SetManualMap(m_current_map);
                 m_last_active_row = -1;
                 if (ArtifactViewer::Instance().IsVisible()) {
-                    ArtifactViewer::Instance().ShowMap(m_current_map);
+                    if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
+                        ArtifactViewer::Instance().ShowMap(m_current_map);
+                    } else {
+                        ArtifactViewer::Instance().Hide();
+                    }
                 }
             }
             if (ImGui::IsItemHovered()) {
@@ -252,7 +312,11 @@ void OverlayUI::RenderMainHUD(float delta_time) {
                 Sc2Client::Instance().SetManualMap(m_current_map);
                 m_last_active_row = -1;
                 if (ArtifactViewer::Instance().IsVisible()) {
-                    ArtifactViewer::Instance().ShowMap(m_current_map);
+                    if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
+                        ArtifactViewer::Instance().ShowMap(m_current_map);
+                    } else {
+                        ArtifactViewer::Instance().Hide();
+                    }
                 }
             }
             if (ImGui::IsItemHovered()) {
@@ -296,7 +360,7 @@ void OverlayUI::RenderMainHUD(float delta_time) {
         }
 
         // --- Row 5: Schedule Table (Fixed, stable height) ---
-        float table_h = 138.0f;
+        float table_h = (float)cfg.table_height;
         if (ImGui::BeginTable("ScheduleTable", 3, ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg, ImVec2(163, table_h))) {
             ImGui::TableSetupColumn("时间", ImGuiTableColumnFlags_WidthFixed, 36.0f);
             ImGui::TableSetupColumn("波次/事件", ImGuiTableColumnFlags_WidthStretch);
@@ -347,7 +411,7 @@ void OverlayUI::RenderMainHUD(float delta_time) {
             ImGui::EndTable();
         }
 
-        // --- Row 6: Mutator Icons ---
+        // --- Row 6: Mutator Icons (Compact bottom layout) ---
         ImGui::Spacing();
         const auto& mutator_types = MutatorManager::Instance().GetTypes();
         for (const auto& mt : mutator_types) {
@@ -372,33 +436,46 @@ void OverlayUI::RenderMainHUD(float delta_time) {
             }
             ImGui::SameLine();
         }
-        ImGui::NewLine();
 
-        // Active Mutator Alerts
+        // Active Mutator Alerts (only break line if there are alerts)
         const auto& alerts = MutatorManager::Instance().GetActiveAlerts();
-        for (const auto& a : alerts) {
-            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "⚠️ %s", a.message.c_str());
+        if (!alerts.empty()) {
+            ImGui::NewLine();
+            for (const auto& a : alerts) {
+                ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "⚠️ %s", a.message.c_str());
+            }
         }
 
         // --- Row 7: Action Buttons (Expand Commander / Artifact) ---
         if (!m_locked) {
+            ImGui::NewLine();
             if (ImGui::Button(m_show_commander_selector ? "收起" : "替换指挥官", ImVec2(80, 22))) {
                 ToggleCommanderSelector();
             }
             ImGui::SameLine();
             bool has_art = ArtifactViewer::Instance().HasArtifact(m_current_map);
-            if (ImGui::Button(has_art ? "神器点位" : "神器点位*", ImVec2(75, 22))) {
-                ToggleArtifact();
+            if (!has_art) {
+                ImGui::BeginDisabled(true);
             }
-            if (ImGui::IsItemHovered()) {
+            if (ImGui::Button("神器点位", ImVec2(75, 22))) {
                 if (has_art) {
-                    std::string target = ArtifactViewer::Instance().ResolveArtifactMap(m_current_map);
-                    ImGui::SetTooltip("查看当前地图 [%s] 泽拉图神器点位 (Ctrl+Shift+\\)", target.c_str());
-                } else {
-                    ImGui::SetTooltip("当前地图无专属神器，点击查看参考图 (Ctrl+Shift+\\)");
+                    ToggleArtifact();
                 }
             }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                if (has_art) {
+                    std::string target = ArtifactViewer::Instance().ResolveArtifactMap(m_current_map);
+                    ImGui::SetTooltip("查看当前地图 [%s] 泽拉图神器点位 (Ctrl+Shift+\\ / Ctrl+\\)", target.c_str());
+                } else {
+                    ImGui::SetTooltip("当前地图无专属神器");
+                }
+            }
+            if (!has_art) {
+                ImGui::EndDisabled();
+            }
         }
+
+        ImGui::SetWindowFontScale(1.0f);
     }
     ImGui::End();
 
@@ -511,6 +588,132 @@ void OverlayUI::RenderCommanderSelector(float delta_time) {
         ImGui::Spacing();
         ImGui::TextColored(ImVec4(0.75f, 0.75f, 0.75f, 0.85f),
             "使用说明：点击头像复制指令后，在游戏聊天框按 Ctrl+V 发送，并双击发送出的链接即可进入替换图。");
+    }
+    ImGui::End();
+
+    ImGui::PopStyleVar(3);
+    ImGui::PopStyleColor(2);
+}
+
+void OverlayUI::RenderSettings(float delta_time) {
+    auto& cfg = AppConfig::Instance();
+
+    int base_w = cfg.main_window_width > 120 ? cfg.main_window_width : 175;
+    int base_h = cfg.main_window_height > 120 ? cfg.main_window_height : 218;
+    int target_h = std::max(base_h, 380);
+
+    ImGui::SetNextWindowPos(ImVec2((float)base_w + 4.0f, 0));
+    ImGui::SetNextWindowSize(ImVec2(310.0f, (float)target_h));
+
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                            ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+                            ImGuiWindowFlags_NoBringToFrontOnFocus;
+
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.12f, 0.14f, 0.18f, 0.95f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.0f, 0.6f, 0.9f, 0.8f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 2.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 10.0f));
+
+    static float save_notice_timer = 0.0f;
+    if (save_notice_timer > 0.0f) save_notice_timer -= delta_time;
+
+    if (ImGui::Begin("SettingsPanel", nullptr, flags)) {
+        ImGui::TextColored(ImVec4(0.0f, 0.85f, 1.0f, 1.0f), "界面与Toast设置 (Settings)");
+        ImGui::SameLine(ImGui::GetWindowWidth() - 40);
+        if (ImGui::Button("X##CloseSettings", ImVec2(30, 20))) {
+            ToggleSettings();
+        }
+
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // 1. Window Dimensions
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "[ 窗体尺寸设置 ]");
+
+        bool size_changed = false;
+        ImGui::SetNextItemWidth(170);
+        if (ImGui::SliderInt("主窗宽度", &cfg.main_window_width, 140, 300, "%d px")) {
+            size_changed = true;
+        }
+
+        ImGui::SetNextItemWidth(170);
+        if (ImGui::SliderInt("主窗高度", &cfg.main_window_height, 180, 450, "%d px")) {
+            size_changed = true;
+        }
+
+        ImGui::SetNextItemWidth(170);
+        if (ImGui::SliderInt("表格高度", &cfg.table_height, 90, 260, "%d px")) {
+            size_changed = true;
+        }
+
+        if (size_changed) {
+            UpdateWindowDimensions();
+        }
+
+        ImGui::Spacing();
+
+        // 2. Font Size
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "[ 文字字体缩放 ]");
+        ImGui::SetNextItemWidth(170);
+        ImGui::SliderFloat("字体大小", &cfg.font_scale, 0.75f, 1.50f, "%.2f x");
+
+        ImGui::Spacing();
+
+        // 3. Toast Notifications
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "[ Toast 弹窗通知设置 ]");
+        ImGui::Checkbox("启用 Toast 预警通知", &cfg.toast_allowed);
+
+        ImGui::SetNextItemWidth(170);
+        ImGui::SliderFloat("Toast垂直位置", &cfg.toast_position_y, 0.05f, 0.95f, "%.2f (屏幕比例)");
+
+        ImGui::SetNextItemWidth(170);
+        ImGui::SliderFloat("Toast尺寸缩放", &cfg.toast_scale, 0.6f, 1.8f, "%.2f x");
+
+        ImGui::SetNextItemWidth(170);
+        int duration_sec = cfg.toast_duration_ms / 1000;
+        if (ImGui::SliderInt("显示持续时间", &duration_sec, 2, 15, "%d 秒")) {
+            cfg.toast_duration_ms = duration_sec * 1000;
+        }
+
+        if (ImGui::Button("🔔 测试 Toast 效果 (Preview)", ImVec2(285, 24))) {
+            ToastWindow::Instance().ShowTestToast();
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // 4. Save & Reset buttons
+        if (ImGui::Button("💾 保存设置", ImVec2(100, 26))) {
+            cfg.Save();
+            save_notice_timer = 3.0f;
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("↺ 恢复紧凑默认", ImVec2(110, 26))) {
+            cfg.main_window_width = 175;
+            cfg.main_window_height = 218;
+            cfg.table_height = 135;
+            cfg.font_scale = 1.0f;
+            cfg.toast_allowed = true;
+            cfg.toast_position_y = 0.88f;
+            cfg.toast_scale = 1.0f;
+            cfg.toast_duration_ms = 8000;
+            cfg.Save();
+            UpdateWindowDimensions();
+            save_notice_timer = 3.0f;
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("关闭", ImVec2(60, 26))) {
+            ToggleSettings();
+        }
+
+        if (save_notice_timer > 0.0f) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.5f, 1.0f), "✓ 设置已成功保存并生效！");
+        }
     }
     ImGui::End();
 
