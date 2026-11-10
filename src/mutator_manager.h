@@ -28,7 +28,7 @@ public:
     void ToggleMutator(const std::string& type);
 
     // Check alerts given current game time
-    void Update(int current_seconds, float delta_time);
+    void Update(int current_seconds, float delta_time, bool is_in_game = true);
     const std::vector<MutatorActiveAlert>& GetActiveAlerts() const { return m_active_alerts; }
     void ResetAlerts();
 

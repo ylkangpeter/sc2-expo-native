@@ -56,6 +56,7 @@ private:
     void RenderAlertBanner(float delta_time);
     void RenderCommanderSelector(float delta_time);
 
+    void SyncGameState(const Sc2GameState& state, float delta_time);
     void UpdateClickThroughState();
 
     bool m_locked = true; // default LOCKED (click-through) on startup
