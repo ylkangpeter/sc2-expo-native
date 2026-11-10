@@ -1,0 +1,19 @@
+# Intermediate build artifacts
+*.o
+*.obj
+res/*.o
+build/
+
+# Test executable
+test_runner.exe
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+
+# IDE / OS files
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+*.log
