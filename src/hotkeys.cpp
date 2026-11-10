@@ -31,39 +31,35 @@ bool HotkeyManager::RegisterAll(HWND hwnd) {
 
     // Map Variant Switch:
     // Primary: Ctrl + Shift + [
-    if (TryRegister(hwnd, HOTKEY_MAP_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_4)) {
-        m_action_map[HOTKEY_MAP_ID] = HotkeyAction::MapSwitch;
-    }
+    TryRegister(hwnd, HOTKEY_MAP_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_4);
+    m_action_map[HOTKEY_MAP_ID] = HotkeyAction::MapSwitch;
+
     // Alternative / Direct: Ctrl + [ (bypasses Windows IME Ctrl+Shift input switcher)
-    if (TryRegister(hwnd, HOTKEY_MAP_ALT_ID, MOD_CONTROL, VK_OEM_4)) {
-        m_action_map[HOTKEY_MAP_ALT_ID] = HotkeyAction::MapSwitch;
-    }
+    TryRegister(hwnd, HOTKEY_MAP_ALT_ID, MOD_CONTROL, VK_OEM_4);
+    m_action_map[HOTKEY_MAP_ALT_ID] = HotkeyAction::MapSwitch;
 
     // Lock Toggle:
     // Primary: Ctrl + Shift + ]
-    if (TryRegister(hwnd, HOTKEY_LOCK_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_6)) {
-        m_action_map[HOTKEY_LOCK_ID] = HotkeyAction::LockToggle;
-    }
+    TryRegister(hwnd, HOTKEY_LOCK_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_6);
+    m_action_map[HOTKEY_LOCK_ID] = HotkeyAction::LockToggle;
+
     // Alternative / Direct: Ctrl + ]
-    if (TryRegister(hwnd, HOTKEY_LOCK_ALT_ID, MOD_CONTROL, VK_OEM_6)) {
-        m_action_map[HOTKEY_LOCK_ALT_ID] = HotkeyAction::LockToggle;
-    }
+    TryRegister(hwnd, HOTKEY_LOCK_ALT_ID, MOD_CONTROL, VK_OEM_6);
+    m_action_map[HOTKEY_LOCK_ALT_ID] = HotkeyAction::LockToggle;
 
     // Artifact Toggle:
     // Primary: Ctrl + Shift + \ (VK_OEM_5)
-    if (TryRegister(hwnd, HOTKEY_ARTIFACT_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_5)) {
-        m_action_map[HOTKEY_ARTIFACT_ID] = HotkeyAction::ArtifactToggle;
-    }
+    TryRegister(hwnd, HOTKEY_ARTIFACT_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_5);
+    m_action_map[HOTKEY_ARTIFACT_ID] = HotkeyAction::ArtifactToggle;
+
     // Alternative / Direct: Ctrl + \ (VK_OEM_5)
-    if (TryRegister(hwnd, HOTKEY_ARTIFACT_ALT_ID, MOD_CONTROL, VK_OEM_5)) {
-        m_action_map[HOTKEY_ARTIFACT_ALT_ID] = HotkeyAction::ArtifactToggle;
-    }
+    TryRegister(hwnd, HOTKEY_ARTIFACT_ALT_ID, MOD_CONTROL, VK_OEM_5);
+    m_action_map[HOTKEY_ARTIFACT_ALT_ID] = HotkeyAction::ArtifactToggle;
 
     // Screenshot:
     // Primary: Ctrl + Shift + - (VK_OEM_MINUS)
-    if (TryRegister(hwnd, HOTKEY_SCREENSHOT_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_MINUS)) {
-        m_action_map[HOTKEY_SCREENSHOT_ID] = HotkeyAction::Screenshot;
-    }
+    TryRegister(hwnd, HOTKEY_SCREENSHOT_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_MINUS);
+    m_action_map[HOTKEY_SCREENSHOT_ID] = HotkeyAction::Screenshot;
 
     return true;
 }

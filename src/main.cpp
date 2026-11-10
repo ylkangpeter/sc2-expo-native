@@ -17,6 +17,7 @@
 #include "overlay_ui.h"
 #include "artifact_viewer.h"
 #include "lock_window.h"
+#include "toast_window.h"
 
 #define WM_TRAYICON (WM_USER + 101)
 #define ID_TRAY_EXIT 2001
@@ -24,6 +25,7 @@
 #define ID_TRAY_MAP 2003
 #define ID_TRAY_ARTIFACT 2004
 #define ID_TRAY_COMMANDER 2005
+#define ID_TRAY_SETTINGS 2006
 
 static ID3D11Device*            g_pd3dDevice = nullptr;
 static ID3D11DeviceContext*     g_pd3dDeviceContext = nullptr;
@@ -81,6 +83,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             AppendMenuW(hMenu, MF_STRING, ID_TRAY_MAP, L"切换地图变种 (Ctrl+Shift+[ / Ctrl+[)");
             AppendMenuW(hMenu, MF_STRING, ID_TRAY_ARTIFACT, L"切换神器点位 (Ctrl+Shift+\\ / Ctrl+\\)");
             AppendMenuW(hMenu, MF_STRING, ID_TRAY_COMMANDER, L"指挥官替换器");
+            AppendMenuW(hMenu, MF_STRING, ID_TRAY_SETTINGS, L"界面与Toast设置 (Settings)");
             AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
             AppendMenuW(hMenu, MF_STRING, ID_TRAY_EXIT, L"退出 (Exit)");
 
@@ -114,6 +117,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             break;
         case ID_TRAY_COMMANDER:
             OverlayUI::Instance().ToggleCommanderSelector();
+            break;
+        case ID_TRAY_SETTINGS:
+            OverlayUI::Instance().ToggleSettings();
             break;
         case ID_TRAY_EXIT:
             PostQuitMessage(0);
@@ -152,8 +158,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     int screen_w = GetSystemMetrics(SM_CXSCREEN);
     int screen_h = GetSystemMetrics(SM_CYSCREEN);
 
-    int win_w = 175;
-    int win_h = 330;
+    int win_w = cfg.main_window_width > 120 ? cfg.main_window_width : 175;
+    int win_h = cfg.main_window_height > 120 ? cfg.main_window_height : 218;
     int win_x = cfg.main_window_x;
     int win_y = cfg.main_window_y;
 
@@ -212,6 +218,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     LockWindow::Instance().SetLocked(true);
 
     ArtifactViewer::Instance().Init(hInstance);
+    ToastWindow::Instance().Init(hInstance);
     HotkeyManager::Instance().RegisterAll(hwnd);
     OverlayUI::Instance().Init(g_pd3dDevice, hwnd);
     Sc2Client::Instance().Start();
