@@ -43,6 +43,12 @@ bool AppConfig::Load(const std::string& path) {
         if (j.contains("toast_position_y")) toast_position_y = j["toast_position_y"].get<float>();
         if (j.contains("toast_scale")) toast_scale = j["toast_scale"].get<float>();
         if (j.contains("toast_duration_ms")) toast_duration_ms = j["toast_duration_ms"].get<int>();
+        if (j.contains("toast_text_color") && j["toast_text_color"].is_array() && j["toast_text_color"].size() >= 3) {
+            toast_text_color = j["toast_text_color"].get<std::vector<float>>();
+        }
+        if (j.contains("toast_border_color") && j["toast_border_color"].is_array() && j["toast_border_color"].size() >= 3) {
+            toast_border_color = j["toast_border_color"].get<std::vector<float>>();
+        }
         if (j.contains("blacklist") && j["blacklist"].is_array()) {
             blacklist = j["blacklist"].get<std::vector<std::string>>();
         }
@@ -71,6 +77,8 @@ bool AppConfig::Save(const std::string& path) const {
         j["toast_position_y"] = toast_position_y;
         j["toast_scale"] = toast_scale;
         j["toast_duration_ms"] = toast_duration_ms;
+        j["toast_text_color"] = toast_text_color;
+        j["toast_border_color"] = toast_border_color;
         j["blacklist"] = blacklist;
 
         std::ofstream file(path);

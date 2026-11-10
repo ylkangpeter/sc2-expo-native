@@ -38,6 +38,8 @@ void TestConfig() {
     TEST_ASSERT(cfg.table_height == 228, "table_height should default to 228");
     TEST_ASSERT(std::abs(cfg.toast_position_y - 0.18f) < 0.01f, "toast_position_y should default to 0.18");
     TEST_ASSERT(std::abs(cfg.toast_scale - 1.43f) < 0.01f, "toast_scale should default to 1.43");
+    TEST_ASSERT(cfg.toast_text_color.size() == 3, "toast_text_color should have 3 components");
+    TEST_ASSERT(cfg.toast_border_color.size() == 3, "toast_border_color should have 3 components");
 
     // Test save & reload
     cfg.Save("test_config.json");
@@ -45,6 +47,8 @@ void TestConfig() {
     bool loaded = test_cfg.Load("test_config.json");
     TEST_ASSERT(loaded, "Config should load successfully from test_config.json");
     TEST_ASSERT(test_cfg.current_region == cfg.current_region, "Reloaded region should match");
+    TEST_ASSERT(test_cfg.toast_text_color.size() == 3, "Reloaded toast_text_color should have 3 components");
+    TEST_ASSERT(test_cfg.toast_border_color.size() == 3, "Reloaded toast_border_color should have 3 components");
     remove("test_config.json");
 }
 

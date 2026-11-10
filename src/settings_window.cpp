@@ -69,9 +69,9 @@ bool SettingsWindow::Init(HINSTANCE hInstance, ID3D11Device* device, ID3D11Devic
     };
     RegisterClassExW(&wc);
 
-    // 2. Position Centered on Screen (Width: 380, Height: 540)
+    // 2. Position Centered on Screen (Width: 380, Height: 600)
     int win_w = 380;
-    int win_h = 540;
+    int win_h = 600;
     int screen_w = GetSystemMetrics(SM_CXSCREEN);
     int screen_h = GetSystemMetrics(SM_CYSCREEN);
     int win_x = (screen_w - win_w) / 2;
@@ -329,6 +329,19 @@ void SettingsWindow::RenderUI(float delta_time) {
             cfg.toast_duration_ms = duration_sec * 1000;
         }
 
+        if (cfg.toast_text_color.size() < 3) {
+            cfg.toast_text_color = { 0.0f, 0.86f, 1.0f };
+        }
+        if (cfg.toast_border_color.size() < 3) {
+            cfg.toast_border_color = { 0.0f, 0.75f, 1.0f };
+        }
+
+        ImGui::SetNextItemWidth(210);
+        ImGui::ColorEdit3("Toast文字颜色", cfg.toast_text_color.data());
+
+        ImGui::SetNextItemWidth(210);
+        ImGui::ColorEdit3("Toast边框颜色", cfg.toast_border_color.data());
+
         ImGui::Spacing();
         if (ImGui::Button("测试 Toast 效果", ImVec2(350, 28))) {
             ToastWindow::Instance().ShowTestToast();
@@ -354,6 +367,8 @@ void SettingsWindow::RenderUI(float delta_time) {
             cfg.toast_position_y = 0.18f;
             cfg.toast_scale = 1.43f;
             cfg.toast_duration_ms = 8000;
+            cfg.toast_text_color = { 0.0f, 0.86f, 1.0f };
+            cfg.toast_border_color = { 0.0f, 0.75f, 1.0f };
             cfg.Save();
             OverlayUI::Instance().UpdateWindowDimensions();
             m_save_notice_timer = 3.0f;

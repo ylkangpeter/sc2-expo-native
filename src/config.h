@@ -39,6 +39,8 @@ struct AppConfig {
     int toast_duration_ms = 8000;
     float toast_position_y = 0.18f; // ratio from top of screen
     float toast_scale = 1.43f;
+    std::vector<float> toast_text_color = { 0.0f, 0.86f, 1.0f }; // Bright cyan RGB [0..1]
+    std::vector<float> toast_border_color = { 0.0f, 0.75f, 1.0f }; // Bright cyan RGB [0..1]
 
     // Time alert threshold in seconds
     int time_alert_seconds = 30;
