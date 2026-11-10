@@ -17,12 +17,16 @@ struct ToastNotification {
     float expire_time = 0.0f;
 };
 
+struct Sc2GameState;
+
 class OverlayUI {
 public:
     static OverlayUI& Instance();
 
     void Init(ID3D11Device* device, HWND hwnd);
     void Render(float delta_time);
+    void UpdateBackground(float delta_time);
+    void CheckWaveToastAlert(const Sc2GameState& state);
 
     bool IsLocked() const { return m_locked; }
     void SetLocked(bool locked);

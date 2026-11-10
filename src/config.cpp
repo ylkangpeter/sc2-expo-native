@@ -40,6 +40,7 @@ bool AppConfig::Load(const std::string& path) {
         if (j.contains("font_scale")) font_scale = j["font_scale"].get<float>();
         if (j.contains("time_alert_seconds")) time_alert_seconds = j["time_alert_seconds"].get<int>();
         if (j.contains("toast_allowed")) toast_allowed = j["toast_allowed"].get<bool>();
+        if (j.contains("toast_when_hidden")) toast_when_hidden = j["toast_when_hidden"].get<bool>();
         if (j.contains("toast_position_y")) toast_position_y = j["toast_position_y"].get<float>();
         if (j.contains("toast_scale")) toast_scale = j["toast_scale"].get<float>();
         if (j.contains("toast_duration_ms")) toast_duration_ms = j["toast_duration_ms"].get<int>();
@@ -74,6 +75,7 @@ bool AppConfig::Save(const std::string& path) const {
         j["font_scale"] = font_scale;
         j["time_alert_seconds"] = time_alert_seconds;
         j["toast_allowed"] = toast_allowed;
+        j["toast_when_hidden"] = toast_when_hidden;
         j["toast_position_y"] = toast_position_y;
         j["toast_scale"] = toast_scale;
         j["toast_duration_ms"] = toast_duration_ms;

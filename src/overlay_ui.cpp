@@ -178,6 +178,82 @@ void OverlayUI::TriggerToast(const ScheduleRow& row, float duration) {
     ToastWindow::Instance().ShowToast(row, m_current_troop, duration);
 }
 
+void OverlayUI::CheckWaveToastAlert(const Sc2GameState& state) {
+    const auto& cfg = AppConfig::Instance();
+    if (!cfg.toast_allowed) return;
+    if (state.screen_state != "in_game" || state.current_seconds <= 0) return;
+
+    const auto& schedule = ScheduleManager::Instance().GetSchedule(m_current_map);
+    if (schedule.empty()) return;
+
+    int active_row = -1;
+    int active_seconds = -1;
+    for (int i = 0; i < (int)schedule.size(); ++i) {
+        if (schedule[i].seconds >= state.current_seconds) {
+            active_row = i;
+            active_seconds = schedule[i].seconds;
+            break;
+        }
+    }
+    if (active_row == -1 && !schedule.empty()) {
+        active_row = (int)schedule.size() - 1;
+        active_seconds = schedule.back().seconds;
+    }
+
+    if (active_row >= 0 && active_seconds > 0) {
+        int diff = active_seconds - state.current_seconds;
+        if (diff > 0 && diff <= cfg.time_alert_seconds && m_last_toast_seconds != active_seconds && !m_toast.active) {
+            TriggerToast(schedule[active_row], (float)cfg.toast_duration_ms / 1000.0f);
+            m_last_toast_seconds = active_seconds;
+        }
+    }
+}
+
+void OverlayUI::UpdateBackground(float delta_time) {
+    Sc2GameState state = Sc2Client::Instance().GetState();
+    auto& cfg = AppConfig::Instance();
+
+    if (!state.current_map.empty()) {
+        std::string localized_map = ScheduleManager::Instance().NormalizeToCurrentLanguage(state.current_map);
+        if (!localized_map.empty() && localized_map != m_current_map) {
+            m_current_map = localized_map;
+            m_last_active_row = -1;
+            m_last_toast_seconds = -1;
+            m_last_toast_map = m_current_map;
+        }
+    }
+
+    bool new_game = Sc2Client::Instance().ConsumeNewGameEvent() || state.is_new_game_event;
+    bool time_rewound = (m_last_game_seconds > 0 && state.current_seconds < m_last_game_seconds);
+    bool map_changed = (m_last_toast_map != m_current_map);
+    bool not_in_game = (state.screen_state != "in_game");
+
+    if (new_game || time_rewound || map_changed || not_in_game) {
+        m_last_toast_seconds = -1;
+        m_last_toast_map = m_current_map;
+        m_last_active_row = -1;
+        if (new_game || time_rewound || map_changed) {
+            MutatorManager::Instance().ResetAlerts();
+        }
+    }
+    m_last_game_seconds = state.current_seconds;
+
+    if (m_toast.active) {
+        m_toast.expire_time -= delta_time;
+        if (m_toast.expire_time <= 0.0f) {
+            m_toast.active = false;
+        }
+    }
+
+    MutatorManager::Instance().Update(state.current_seconds, delta_time);
+    ToastWindow::Instance().Update(delta_time);
+
+    // Only trigger wave toast when main window is hidden if explicitly enabled in settings
+    if (cfg.toast_when_hidden) {
+        CheckWaveToastAlert(state);
+    }
+}
+
 void OverlayUI::Render(float delta_time) {
     // 1. Sync SC2 State
     Sc2GameState state = Sc2Client::Instance().GetState();
@@ -380,13 +456,7 @@ void OverlayUI::RenderMainHUD(float delta_time) {
         }
 
         // Auto trigger toast within threshold (ONLY during active in-game match)
-        if (state.screen_state == "in_game" && state.current_seconds > 0 && active_row >= 0 && active_seconds > 0) {
-            int diff = active_seconds - state.current_seconds;
-            if (diff > 0 && diff <= cfg.time_alert_seconds && m_last_toast_seconds != active_seconds && !m_toast.active) {
-                TriggerToast(schedule[active_row], (float)cfg.toast_duration_ms / 1000.0f);
-                m_last_toast_seconds = active_seconds;
-            }
-        }
+        CheckWaveToastAlert(state);
 
         if (m_toast.active) {
             m_toast.expire_time -= delta_time;

@@ -365,9 +365,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
             g_pSwapChain->Present(1, 0);
         } else if (!main_vis) {
             // Keep game state / timer / mutators updated even when overlay is hidden
-            Sc2GameState state = Sc2Client::Instance().GetState();
-            MutatorManager::Instance().Update(state.current_seconds, delta_time);
-            ToastWindow::Instance().Update(delta_time);
+            OverlayUI::Instance().UpdateBackground(delta_time);
         }
 
         MutatorAlertWindow::Instance().Update(delta_time);
