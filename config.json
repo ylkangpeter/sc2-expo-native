@@ -12,7 +12,17 @@
     "table_height": 228,
     "time_alert_seconds": 30,
     "toast_allowed": true,
+    "toast_border_color": [
+        0.0,
+        0.75,
+        1.0
+    ],
     "toast_duration_ms": 8000,
     "toast_position_y": 0.18,
-    "toast_scale": 1.43
+    "toast_scale": 1.43,
+    "toast_text_color": [
+        0.0,
+        0.86,
+        1.0
+    ]
 }

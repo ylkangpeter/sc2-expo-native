@@ -160,7 +160,12 @@ void ToastWindow::RenderToast() {
                          ((uint8_t)((b * alpha) / 255));
 
     uint8_t border_alpha = 240;
-    uint8_t br = 0, bg_c = 191, bb = 255; // Bright cyan border
+    float border_r = (cfg.toast_border_color.size() >= 3) ? cfg.toast_border_color[0] : 0.0f;
+    float border_g = (cfg.toast_border_color.size() >= 3) ? cfg.toast_border_color[1] : 0.75f;
+    float border_b = (cfg.toast_border_color.size() >= 3) ? cfg.toast_border_color[2] : 1.0f;
+    uint8_t br = (uint8_t)std::clamp((int)(border_r * 255.0f), 0, 255);
+    uint8_t bg_c = (uint8_t)std::clamp((int)(border_g * 255.0f), 0, 255);
+    uint8_t bb = (uint8_t)std::clamp((int)(border_b * 255.0f), 0, 255);
     uint32_t premul_border = (border_alpha << 24) |
                             ((uint8_t)((br * border_alpha) / 255) << 16) |
                             ((uint8_t)((bg_c * border_alpha) / 255) << 8) |
@@ -192,7 +197,13 @@ void ToastWindow::RenderToast() {
     std::wstring wtext = Utf8ToWide(text_str);
 
     RECT rcText = { 15, 0, width - 15, height };
-    SetTextColor(hdcMem, RGB(0, 220, 255)); // Bright cyan
+    float text_r = (cfg.toast_text_color.size() >= 3) ? cfg.toast_text_color[0] : 0.0f;
+    float text_g = (cfg.toast_text_color.size() >= 3) ? cfg.toast_text_color[1] : 0.86f;
+    float text_b = (cfg.toast_text_color.size() >= 3) ? cfg.toast_text_color[2] : 1.0f;
+    uint8_t tr = (uint8_t)std::clamp((int)(text_r * 255.0f), 0, 255);
+    uint8_t tg = (uint8_t)std::clamp((int)(text_g * 255.0f), 0, 255);
+    uint8_t tb = (uint8_t)std::clamp((int)(text_b * 255.0f), 0, 255);
+    SetTextColor(hdcMem, RGB(tr, tg, tb));
     DrawTextW(hdcMem, wtext.c_str(), -1, &rcText, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
 
     // Ensure drawn GDI text has proper non-zero alpha in the 32-bit DIB

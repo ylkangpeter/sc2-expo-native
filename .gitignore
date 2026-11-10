@@ -4,6 +4,10 @@
 res/*.o
 build/
 
+# Distribution package output
+dist/
+*.zip
+
 # Test executable
 test_runner.exe
 
