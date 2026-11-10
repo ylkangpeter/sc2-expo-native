@@ -42,10 +42,20 @@ void CreateRenderTarget();
 void CleanupRenderTarget();
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (g_mainImGuiContext) {
-        ImGui::SetCurrentContext(g_mainImGuiContext);
+struct ImGuiContextScope {
+    ImGuiContext* prev;
+    ImGuiContextScope(ImGuiContext* ctx) {
+        prev = ImGui::GetCurrentContext();
+        if (ctx) ImGui::SetCurrentContext(ctx);
     }
+    ~ImGuiContextScope() {
+        if (prev) ImGui::SetCurrentContext(prev);
+    }
+};
+
+LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    ImGuiContextScope scope(g_mainImGuiContext);
+
     if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
         return true;
 
@@ -470,6 +480,10 @@ void CreateRenderTarget() {
 
 void CleanupRenderTarget() {
     if (g_mainRenderTargetView) {
+        if (g_pd3dDeviceContext) {
+            ID3D11RenderTargetView* nullViews[] = { nullptr };
+            g_pd3dDeviceContext->OMSetRenderTargets(1, nullViews, nullptr);
+        }
         g_mainRenderTargetView->Release();
         g_mainRenderTargetView = nullptr;
     }

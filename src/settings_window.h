@@ -41,5 +41,7 @@ private:
 
     ImGuiContext* m_imguiContext = nullptr;
     bool m_visible = false;
+    bool m_need_hide = false;
+    bool m_need_update_dimensions = false;
     float m_save_notice_timer = 0.0f;
 };

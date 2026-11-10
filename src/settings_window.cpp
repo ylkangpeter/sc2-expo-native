@@ -11,16 +11,22 @@
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    ImGuiContext* prev = ImGui::GetCurrentContext();
-    if (SettingsWindow::Instance().GetImGuiContext()) {
-        ImGui::SetCurrentContext(SettingsWindow::Instance().GetImGuiContext());
-        if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam)) {
-            if (prev) ImGui::SetCurrentContext(prev);
-            return true;
-        }
+struct ImGuiContextScope {
+    ImGuiContext* prev;
+    ImGuiContextScope(ImGuiContext* ctx) {
+        prev = ImGui::GetCurrentContext();
+        if (ctx) ImGui::SetCurrentContext(ctx);
     }
-    if (prev) ImGui::SetCurrentContext(prev);
+    ~ImGuiContextScope() {
+        if (prev) ImGui::SetCurrentContext(prev);
+    }
+};
+
+static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    ImGuiContextScope scope(SettingsWindow::Instance().GetImGuiContext());
+
+    if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam))
+        return true;
 
     switch (msg) {
     case WM_CLOSE:
@@ -194,6 +200,10 @@ void SettingsWindow::CreateRenderTarget() {
 
 void SettingsWindow::CleanupRenderTarget() {
     if (m_renderTargetView) {
+        if (m_context) {
+            ID3D11RenderTargetView* nullViews[] = { nullptr };
+            m_context->OMSetRenderTargets(1, nullViews, nullptr);
+        }
         m_renderTargetView->Release();
         m_renderTargetView = nullptr;
     }
@@ -239,6 +249,16 @@ void SettingsWindow::Render(float delta_time) {
     m_context->ClearRenderTargetView(m_renderTargetView, clear_color);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
     m_swapChain->Present(1, 0);
+
+    // Perform deferred actions safely outside of the active ImGui frame
+    if (m_need_update_dimensions) {
+        m_need_update_dimensions = false;
+        OverlayUI::Instance().UpdateWindowDimensions();
+    }
+    if (m_need_hide) {
+        m_need_hide = false;
+        Hide();
+    }
 }
 
 void SettingsWindow::RenderUI(float delta_time) {
@@ -279,7 +299,7 @@ void SettingsWindow::RenderUI(float delta_time) {
 
         ImGui::SameLine(ImGui::GetWindowWidth() - 42);
         if (ImGui::Button("X##CloseSettings", ImVec2(28, 22))) {
-            Hide();
+            m_need_hide = true;
         }
 
         ImGui::Separator();
@@ -305,7 +325,7 @@ void SettingsWindow::RenderUI(float delta_time) {
         }
 
         if (size_changed) {
-            OverlayUI::Instance().UpdateWindowDimensions();
+            m_need_update_dimensions = true;
         }
 
         ImGui::Spacing();
@@ -374,13 +394,13 @@ void SettingsWindow::RenderUI(float delta_time) {
             cfg.toast_text_color = { 0.0f, 0.86f, 1.0f };
             cfg.toast_border_color = { 0.0f, 0.75f, 1.0f };
             cfg.Save();
-            OverlayUI::Instance().UpdateWindowDimensions();
+            m_need_update_dimensions = true;
             m_save_notice_timer = 3.0f;
         }
 
         ImGui::SameLine();
         if (ImGui::Button("关闭", ImVec2(80, 30))) {
-            Hide();
+            m_need_hide = true;
         }
 
         if (m_save_notice_timer > 0.0f) {
