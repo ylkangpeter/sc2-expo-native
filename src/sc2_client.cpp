@@ -40,6 +40,13 @@ Sc2GameState Sc2Client::GetState() {
     return m_state;
 }
 
+bool Sc2Client::ConsumeNewGameEvent() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    bool ev = m_state.is_new_game_event;
+    m_state.is_new_game_event = false;
+    return ev;
+}
+
 void Sc2Client::SetManualMap(const std::string& map_name) {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_manual_map = map_name;

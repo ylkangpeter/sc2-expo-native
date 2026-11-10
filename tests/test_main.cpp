@@ -254,6 +254,29 @@ void TestScheduleManager() {
 
     std::string switchedBaseL = sm.SwitchVariant("虚空撕裂");
     TEST_ASSERT(switchedBaseL == "虚空撕裂-左" || switchedBaseL == "虚空撕裂-右", "Switching 虚空撕裂 (base) should cycle variant");
+
+    // English mode and cross-language variant switching tests
+    sm.LoadAllMaps("en");
+    TEST_ASSERT(sm.GetMapList().size() == 17, "Should load 17 maps in English mode");
+    TEST_ASSERT(sm.GetCanonicalMapId("升格之恋") == "chain_of_ascension", "升格之恋 should map to chain_of_ascension");
+    TEST_ASSERT(sm.GetMapDisplayName("升格之恋", "en") == "Chain of Ascension", "升格之恋 in en should be Chain of Ascension");
+    TEST_ASSERT(sm.GetMapDisplayName("Chain of Ascension", "zh") == "升格之恋", "Chain of Ascension in zh should be 升格之恋");
+
+    // Auto-detected Chinese map name requesting English schedule
+    const auto& en_rows = sm.GetSchedule("升格之恋");
+    TEST_ASSERT(!en_rows.empty(), "Should get schedule for 升格之恋 even in en mode");
+
+    // Switching variant in English mode
+    std::string switchedEnA = sm.SwitchVariant("Temple of the Past-A");
+    TEST_ASSERT(switchedEnA == "Temple of the Past-B", "Switching Temple of the Past-A should give Temple of the Past-B");
+    std::string switchedEnFromZh = sm.SwitchVariant("往日神庙-A");
+    TEST_ASSERT(switchedEnFromZh == "Temple of the Past-B", "Switching 往日神庙-A in en mode should switch to Temple of the Past-B");
+
+    std::string switchedEnL = sm.SwitchVariant("Void Thrashing-Left");
+    TEST_ASSERT(switchedEnL == "Void Thrashing-Right", "Switching Void Thrashing-Left should give Void Thrashing-Right");
+
+    // Restore to zh
+    sm.LoadAllMaps("zh");
 }
 
 void TestTroopManager() {

@@ -1,4 +1,5 @@
 #include "mutator_manager.h"
+#include "mutator_alert_window.h"
 #include "schedule_manager.h"
 #include <fstream>
 #include <iostream>
@@ -50,6 +51,7 @@ void MutatorManager::SetMutatorEnabled(const std::string& type, bool enabled) {
     m_enabled[type] = enabled;
     if (!enabled) {
         m_alerted_points[type].clear();
+        MutatorAlertWindow::Instance().HideAlert(type);
         // remove existing active alerts of this type
         for (auto it = m_active_alerts.begin(); it != m_active_alerts.end(); ) {
             if (it->mutator_type == type) {
@@ -69,6 +71,7 @@ void MutatorManager::ResetAlerts() {
     m_alerted_points.clear();
     m_active_alerts.clear();
     m_last_game_seconds = -1;
+    MutatorAlertWindow::Instance().HideAll();
 }
 
 void MutatorManager::Update(int current_seconds, float delta_time) {
@@ -114,13 +117,17 @@ void MutatorManager::Update(int current_seconds, float delta_time) {
             if (diff > 0 && diff <= alert_threshold) {
                 alerted.insert(ev.seconds);
 
+                std::string alert_msg = std::to_string(diff) + "s : " + ev.message;
                 MutatorActiveAlert alert;
                 alert.mutator_type = t;
-                alert.message = std::to_string(diff) + "s : " + ev.message;
+                alert.message = alert_msg;
                 alert.time_remaining = (float)diff;
-                alert.expire_time = 5.0f; // 5 seconds display
+                alert.expire_time = 6.0f; // 6 seconds display
                 alert.screen_x_ratio = pos_map[t];
                 m_active_alerts.push_back(alert);
+
+                // Show independent on-screen alert window
+                MutatorAlertWindow::Instance().ShowAlert(t, alert_msg, 6.0f, pos_map[t]);
             }
         }
     }

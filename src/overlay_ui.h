@@ -62,6 +62,8 @@ private:
 
     int m_last_active_row = -1;
     int m_last_toast_seconds = -1;
+    int m_last_game_seconds = -1;
+    std::string m_last_toast_map;
 
     ToastNotification m_toast;
 

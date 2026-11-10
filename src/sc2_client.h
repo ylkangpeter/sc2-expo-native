@@ -25,6 +25,7 @@ public:
     void Stop();
 
     Sc2GameState GetState();
+    bool ConsumeNewGameEvent();
     void SetManualMap(const std::string& map_name);
 
 private:

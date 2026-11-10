@@ -33,6 +33,12 @@ public:
     bool GetVariant(const std::string& map_name, MapVariant& out_variant) const;
     std::string SwitchVariant(const std::string& current_map) const;
 
+    // Canonical Map ID and Localization mapping
+    std::string GetCanonicalMapId(const std::string& any_name) const;
+    std::string GetMapDisplayName(const std::string& any_name, const std::string& target_lang) const;
+    std::string NormalizeToCurrentLanguage(const std::string& any_name) const;
+    const std::string& GetCurrentLanguage() const { return m_current_lang; }
+
     // Time parsing and formatting utilities
     static int ParseTimeToSeconds(const std::string& time_str);
     static std::string FormatSecondsToTime(int total_seconds);
