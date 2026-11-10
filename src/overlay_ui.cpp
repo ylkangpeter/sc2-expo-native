@@ -234,6 +234,13 @@ void OverlayUI::RenderMainHUD(float delta_time) {
             if (ImGui::Button(var.opt1.c_str(), ImVec2(24, 20))) {
                 m_current_map = var.prefix + "-" + var.opt1;
                 Sc2Client::Instance().SetManualMap(m_current_map);
+                m_last_active_row = -1;
+                if (ArtifactViewer::Instance().IsVisible()) {
+                    ArtifactViewer::Instance().ShowMap(m_current_map);
+                }
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("切换到变种 %s (快捷键: Ctrl+Shift+[ 或 Ctrl+[)", var.opt1.c_str());
             }
             if (is_opt1) ImGui::PopStyleColor();
 
@@ -243,11 +250,18 @@ void OverlayUI::RenderMainHUD(float delta_time) {
             if (ImGui::Button(var.opt2.c_str(), ImVec2(24, 20))) {
                 m_current_map = var.prefix + "-" + var.opt2;
                 Sc2Client::Instance().SetManualMap(m_current_map);
+                m_last_active_row = -1;
+                if (ArtifactViewer::Instance().IsVisible()) {
+                    ArtifactViewer::Instance().ShowMap(m_current_map);
+                }
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("切换到变种 %s (快捷键: Ctrl+Shift+[ 或 Ctrl+[)", var.opt2.c_str());
             }
             if (is_opt2) ImGui::PopStyleColor();
         }
 
-        // --- Row 4: Wave Alert Banner (Approaching Event or Toast) ---
+        // --- Row 4: Wave Schedule Table ---
         const auto& schedule = ScheduleManager::Instance().GetSchedule(m_current_map);
 
         // Find upcoming event
@@ -265,8 +279,8 @@ void OverlayUI::RenderMainHUD(float delta_time) {
             active_seconds = schedule.back().seconds;
         }
 
-        // Auto trigger toast within threshold
-        if (active_row >= 0 && active_seconds > 0) {
+        // Auto trigger toast within threshold (ONLY during active in-game match)
+        if (state.screen_state == "in_game" && state.current_seconds > 0 && active_row >= 0 && active_seconds > 0) {
             int diff = active_seconds - state.current_seconds;
             if (diff > 0 && diff <= cfg.time_alert_seconds && m_last_toast_seconds != active_seconds && !m_toast.active) {
                 TriggerToast(schedule[active_row], (float)cfg.toast_duration_ms / 1000.0f);
@@ -274,49 +288,15 @@ void OverlayUI::RenderMainHUD(float delta_time) {
             }
         }
 
-        // Display Alert Banner if active toast
         if (m_toast.active) {
             m_toast.expire_time -= delta_time;
             if (m_toast.expire_time <= 0.0f) {
                 m_toast.active = false;
-            } else {
-                ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.2f, 0.15f, 0.05f, 0.9f));
-                ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1.0f, 0.75f, 0.0f, 0.9f));
-                if (ImGui::BeginChild("AlertBanner", ImVec2(163, 40), true, ImGuiWindowFlags_NoScrollbar)) {
-                    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "[%s] %s %s",
-                                       m_toast.time_text.c_str(), m_toast.event_text.c_str(), m_toast.tier_text.c_str());
-
-                    // Regular units icons
-                    for (const auto& u : m_toast.regular_unit_icons) {
-                        std::string race = TroopManager::Instance().GetRaceForTroop(m_current_troop);
-                        std::string path = "ico/troops/" + race + "/" + u + ".png";
-                        TextureData td = TextureLoader::Instance().LoadTexture(path);
-                        if (td.srv) {
-                            ImGui::Image((ImTextureID)td.srv, ImVec2(18, 18));
-                            ImGui::SameLine();
-                        }
-                    }
-                    // Hybrid icons
-                    for (const auto& h : m_toast.hybrid_icons) {
-                        std::string path = "ico/troops/hybrid/" + h.first + ".webp";
-                        TextureData td = TextureLoader::Instance().LoadTexture(path);
-                        if (td.srv) {
-                            ImGui::Image((ImTextureID)td.srv, ImVec2(18, 18));
-                            ImGui::SameLine();
-                            if (h.second > 1) {
-                                ImGui::TextColored(ImVec4(0, 1, 0.5f, 1), "x%d", h.second);
-                                ImGui::SameLine();
-                            }
-                        }
-                    }
-                }
-                ImGui::EndChild();
-                ImGui::PopStyleColor(2);
             }
         }
 
-        // --- Row 5: Schedule Table ---
-        float table_h = m_toast.active ? 100.0f : 138.0f;
+        // --- Row 5: Schedule Table (Fixed, stable height) ---
+        float table_h = 138.0f;
         if (ImGui::BeginTable("ScheduleTable", 3, ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg, ImVec2(163, table_h))) {
             ImGui::TableSetupColumn("时间", ImGuiTableColumnFlags_WidthFixed, 36.0f);
             ImGui::TableSetupColumn("波次/事件", ImGuiTableColumnFlags_WidthStretch);
@@ -406,8 +386,17 @@ void OverlayUI::RenderMainHUD(float delta_time) {
                 ToggleCommanderSelector();
             }
             ImGui::SameLine();
-            if (ImGui::Button("神器点位", ImVec2(75, 22))) {
+            bool has_art = ArtifactViewer::Instance().HasArtifact(m_current_map);
+            if (ImGui::Button(has_art ? "神器点位" : "神器点位*", ImVec2(75, 22))) {
                 ToggleArtifact();
+            }
+            if (ImGui::IsItemHovered()) {
+                if (has_art) {
+                    std::string target = ArtifactViewer::Instance().ResolveArtifactMap(m_current_map);
+                    ImGui::SetTooltip("查看当前地图 [%s] 泽拉图神器点位 (Ctrl+Shift+\\)", target.c_str());
+                } else {
+                    ImGui::SetTooltip("当前地图无专属神器，点击查看参考图 (Ctrl+Shift+\\)");
+                }
             }
         }
     }

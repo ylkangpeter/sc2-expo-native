@@ -49,7 +49,11 @@ def wait_for_condition(cond_fn, timeout=4.0, poll_interval=0.1):
 def run_tests():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.abspath(os.path.join(script_dir, ".."))
-    exe_path = os.path.join(repo_root, "sc2_expo.exe")
+    exe_path = os.path.join(repo_root, "dist", "sc2_expo", "sc2_expo.exe")
+    run_dir = os.path.join(repo_root, "dist", "sc2_expo")
+    if not os.path.exists(exe_path):
+        exe_path = os.path.join(repo_root, "sc2_expo.exe")
+        run_dir = repo_root
 
     if not os.path.exists(exe_path):
         print(f"[ERROR] Executable not found at {exe_path}")
@@ -61,7 +65,7 @@ def run_tests():
     print("=" * 65)
 
     print("\n[Step 1] Launching sc2_expo.exe...")
-    proc = subprocess.Popen([exe_path], cwd=repo_root)
+    proc = subprocess.Popen([exe_path], cwd=run_dir)
 
     try:
         # 1. Locate Main Window

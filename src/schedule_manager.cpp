@@ -182,8 +182,19 @@ const std::vector<ScheduleRow>& ScheduleManager::GetSchedule(const std::string& 
 }
 
 bool ScheduleManager::GetVariant(const std::string& map_name, MapVariant& out_variant) const {
+    if (map_name.empty()) return false;
+
     size_t dash = map_name.rfind('-');
-    if (dash == std::string::npos) return false;
+    if (dash == std::string::npos) {
+        // Fallback: If map_name has no suffix (e.g. "往日神庙"), search for existing variant in m_map_list
+        std::string prefix_match = map_name + "-";
+        for (const auto& m : m_map_list) {
+            if (m.rfind(prefix_match, 0) == 0) {
+                return GetVariant(m, out_variant);
+            }
+        }
+        return false;
+    }
 
     std::string prefix = map_name.substr(0, dash);
     std::string suffix = map_name.substr(dash + 1);
@@ -202,6 +213,13 @@ bool ScheduleManager::GetVariant(const std::string& map_name, MapVariant& out_va
         out_variant.opt1 = "左";
         out_variant.opt2 = "右";
         return true;
+    } else if (suffix == "Left" || suffix == "Right") {
+        out_variant.type = "LR";
+        out_variant.current_suffix = suffix;
+        out_variant.prefix = prefix;
+        out_variant.opt1 = "Left";
+        out_variant.opt2 = "Right";
+        return true;
     }
     return false;
 }
@@ -213,7 +231,7 @@ std::string ScheduleManager::SwitchVariant(const std::string& current_map) const
     std::string next_suffix = (var.current_suffix == var.opt1) ? var.opt2 : var.opt1;
     std::string next_map = var.prefix + "-" + next_suffix;
 
-    // Check if next_map exists
+    // Check if next_map exists in loaded map list
     if (std::find(m_map_list.begin(), m_map_list.end(), next_map) != m_map_list.end()) {
         return next_map;
     }
