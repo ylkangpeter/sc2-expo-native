@@ -74,13 +74,7 @@ void MutatorManager::ResetAlerts() {
     MutatorAlertWindow::Instance().HideAll();
 }
 
-void MutatorManager::Update(int current_seconds, float delta_time) {
-    // If game restarted (time went back)
-    if (m_last_game_seconds > 0 && current_seconds < m_last_game_seconds) {
-        ResetAlerts();
-    }
-    m_last_game_seconds = current_seconds;
-
+void MutatorManager::Update(int current_seconds, float delta_time, bool is_in_game) {
     // Decay active alerts
     for (auto it = m_active_alerts.begin(); it != m_active_alerts.end(); ) {
         it->expire_time -= delta_time;
@@ -90,6 +84,17 @@ void MutatorManager::Update(int current_seconds, float delta_time) {
             ++it;
         }
     }
+
+    if (!is_in_game) {
+        MutatorAlertWindow::Instance().HideAll();
+        return;
+    }
+
+    // If game restarted (time went back)
+    if (m_last_game_seconds > 0 && current_seconds < m_last_game_seconds) {
+        ResetAlerts();
+    }
+    m_last_game_seconds = current_seconds;
 
     if (current_seconds <= 0) return;
 

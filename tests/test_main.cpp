@@ -326,6 +326,18 @@ void TestMutatorManager() {
 
     mm.SetMutatorEnabled("bombbots", false);
     TEST_ASSERT(!mm.IsMutatorEnabled("bombbots"), "bombbots should be disabled");
+
+    // Test non-in-game alert suppression
+    mm.ResetAlerts();
+    mm.SetMutatorEnabled("bombbots", true);
+    mm.Update(125, 0.5f, false); // is_in_game = false
+    TEST_ASSERT(mm.GetActiveAlerts().empty(), "Non-in-game state must not trigger mutator alert");
+
+    // Now become in-game: should trigger properly without being previously consumed
+    mm.Update(125, 0.5f, true); // is_in_game = true
+    TEST_ASSERT(!mm.GetActiveAlerts().empty(), "In-game state should trigger mutator alert");
+    mm.SetMutatorEnabled("bombbots", false);
+    mm.ResetAlerts();
 }
 
 void TestCommanderManager() {
