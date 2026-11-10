@@ -40,13 +40,17 @@ void TestConfig() {
     TEST_ASSERT(std::abs(cfg.toast_scale - 1.43f) < 0.01f, "toast_scale should default to 1.43");
     TEST_ASSERT(cfg.toast_text_color.size() == 3, "toast_text_color should have 3 components");
     TEST_ASSERT(cfg.toast_border_color.size() == 3, "toast_border_color should have 3 components");
+    TEST_ASSERT(cfg.toast_when_hidden == false, "toast_when_hidden should default to false");
 
     // Test save & reload
+    cfg.toast_when_hidden = true;
     cfg.Save("test_config.json");
+    cfg.toast_when_hidden = false; // Reset
     AppConfig test_cfg;
     bool loaded = test_cfg.Load("test_config.json");
     TEST_ASSERT(loaded, "Config should load successfully from test_config.json");
     TEST_ASSERT(test_cfg.current_region == cfg.current_region, "Reloaded region should match");
+    TEST_ASSERT(test_cfg.toast_when_hidden == true, "Reloaded toast_when_hidden should match true");
     TEST_ASSERT(test_cfg.toast_text_color.size() == 3, "Reloaded toast_text_color should have 3 components");
     TEST_ASSERT(test_cfg.toast_border_color.size() == 3, "Reloaded toast_border_color should have 3 components");
     remove("test_config.json");

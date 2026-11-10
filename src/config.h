@@ -36,6 +36,7 @@ struct AppConfig {
 
     // Toast configuration
     bool toast_allowed = true;
+    bool toast_when_hidden = false; // Trigger wave toast even when main window is hidden
     int toast_duration_ms = 8000;
     float toast_position_y = 0.18f; // ratio from top of screen
     float toast_scale = 1.43f;

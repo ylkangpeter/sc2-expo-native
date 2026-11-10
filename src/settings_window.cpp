@@ -341,6 +341,11 @@ void SettingsWindow::RenderUI(float delta_time) {
         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "[ Toast 弹窗通知设置 ]");
         ImGui::Checkbox("启用 Toast 预警通知", &cfg.toast_allowed);
 
+        ImGui::Checkbox("主窗隐藏时仍提示波次", &cfg.toast_when_hidden);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("开启后，即使通过托盘隐藏了主悬浮窗，在游戏中到达波次时间仍会正常弹出屏幕 Toast 预警（默认关闭）");
+        }
+
         ImGui::SetNextItemWidth(210);
         ImGui::SliderFloat("Toast垂直位置", &cfg.toast_position_y, 0.05f, 0.95f, "%.2f (屏幕比例)");
 
@@ -388,6 +393,7 @@ void SettingsWindow::RenderUI(float delta_time) {
             cfg.table_height = 228;
             cfg.font_scale = 1.0f;
             cfg.toast_allowed = true;
+            cfg.toast_when_hidden = false;
             cfg.toast_position_y = 0.18f;
             cfg.toast_scale = 1.43f;
             cfg.toast_duration_ms = 8000;
