@@ -98,9 +98,30 @@ def test_fixes():
 
         # Test 2: Tray Command ID_TRAY_SETTINGS (2006)
         print("\n--- Test 2: Testing Settings Panel via Tray Command (2006) ---")
+        h_settings = user32.FindWindowW("SC2SettingsWindowNative", "设置")
+        if not h_settings:
+            print("[FAIL] Settings window not found")
+            return False
+        print(f"[PASS] Settings window found (HWND={h_settings})")
+
+        # Open settings
         user32.PostMessageW(hwnd, 0x0111, 2006, 0) # ID_TRAY_SETTINGS
         time.sleep(0.5)
-        print("[PASS] Tray command ID_TRAY_SETTINGS (2006) executed cleanly")
+        vis_settings = user32.IsWindowVisible(h_settings)
+        print(f"Settings visible after tray command: {bool(vis_settings)}")
+        if not vis_settings:
+            print("[FAIL] Settings window should be visible after tray command!")
+            return False
+        print("[PASS] Standalone Settings window displayed successfully!")
+
+        # Toggle close settings
+        user32.PostMessageW(hwnd, 0x0111, 2006, 0)
+        time.sleep(0.5)
+        vis_settings = user32.IsWindowVisible(h_settings)
+        if vis_settings:
+            print("[FAIL] Settings window should be hidden after 2nd toggle!")
+            return False
+        print("[PASS] Standalone Settings window closed cleanly!")
 
         # Test 2.5: Tray Lock / Unlock toggle
         print("\n--- Test 2.5: Testing Tray Lock Toggle (2001) ---")

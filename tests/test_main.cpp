@@ -33,6 +33,11 @@ void TestConfig() {
     TEST_ASSERT(!cfg.current_language.empty(), "Language should not be empty");
     TEST_ASSERT(cfg.time_alert_seconds == 30, "Time alert seconds should default to 30");
     TEST_ASSERT(cfg.artifact_positions.size() == 6, "There should be 6 artifact map positions configured");
+    TEST_ASSERT(cfg.main_window_width == 173, "main_window_width should default to 173");
+    TEST_ASSERT(cfg.main_window_height == 340, "main_window_height should default to 340");
+    TEST_ASSERT(cfg.table_height == 228, "table_height should default to 228");
+    TEST_ASSERT(std::abs(cfg.toast_position_y - 0.18f) < 0.01f, "toast_position_y should default to 0.18");
+    TEST_ASSERT(std::abs(cfg.toast_scale - 1.43f) < 0.01f, "toast_scale should default to 1.43");
 
     // Test save & reload
     cfg.Save("test_config.json");
