@@ -147,6 +147,7 @@ def build_tests():
     
     sources = [
         "tests/test_main.cpp",
+        "tests/test_overlay_lifecycle.cpp",
         "src/config.cpp",
         "src/map_detector.cpp",
         "src/schedule_manager.cpp",
@@ -155,11 +156,25 @@ def build_tests():
         "src/mutator_alert_window.cpp",
         "src/commander_manager.cpp",
         "src/texture_loader.cpp",
-        "src/artifact_viewer.cpp"
+        "src/artifact_viewer.cpp",
+        "src/overlay_ui.cpp",
+        "src/sc2_client.cpp",
+        "src/hotkeys.cpp",
+        "src/lock_window.cpp",
+        "src/settings_window.cpp",
+        "src/toast_window.cpp",
+        "vendor/imgui/imgui.cpp",
+        "vendor/imgui/imgui_draw.cpp",
+        "vendor/imgui/imgui_tables.cpp",
+        "vendor/imgui/imgui_widgets.cpp",
+        "vendor/imgui/backends/imgui_impl_win32.cpp",
+        "vendor/imgui/backends/imgui_impl_dx11.cpp",
     ]
     
     includes = [
         "-Ivendor",
+        "-Ivendor/imgui",
+        "-Ivendor/imgui/backends",
         "-Ivendor/nlohmann",
         "-Isrc"
     ]
@@ -169,6 +184,11 @@ def build_tests():
         "-lwindowscodecs",
         "-ld3d11",
         "-lgdi32",
+        "-ld3dcompiler",
+        "-ldwmapi",
+        "-lwinhttp",
+        "-limm32",
+        "-lshell32",
     ]
     
     output_exe = "test_runner.exe"

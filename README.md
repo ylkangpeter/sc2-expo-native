@@ -110,7 +110,8 @@ sc2-expo-native/
 │   ├── hotkeys.h/.cpp          # Win32 全局热键系统
 │   └── config.h/.cpp           # 配置管理与 JSON 持久化
 ├── tests/
-│   ├── test_main.cpp          # 覆盖核心业务模块的 117 项自动化单元与集成测试
+│   ├── test_main.cpp          # 核心业务模块与生命周期测试入口（共 148 项检查）
+│   ├── test_overlay_lifecycle.cpp # 无需运行 SC2 的预览、断线恢复与 Toast 计时回归测试
 │   ├── verify_app.py          # 真实窗体尺寸、非全屏、穿透属性、干净退出自动化测试
 │   ├── test_lock_toggle.py    # 全局热键 Ctrl+Shift+] 点击穿透锁定切换自动化验证
 │   ├── test_artifact_toggle.py# 全局热键 Ctrl+Shift+\ 神器点位全屏穿透显示/隐藏自动化验证
@@ -182,5 +183,5 @@ python tests/test_artifact_toggle.py
 python tests/test_commander_toggle.py
 ```
 全套自动化测试套件涵盖：
-- 117 项核心业务逻辑测试（配置读写、地图多语言多玩家识别、时间轴、兵种等级匹配、突变因子时钟、指挥官替换与链接、WIC WebP 解码、Toast 色彩与缩放参数验证）。
+- 148 项核心业务与生命周期检查（配置读写、地图多语言多玩家识别、时间轴、兵种等级匹配、突变因子时钟、指挥官替换与链接、WIC WebP 解码、Toast 色彩与缩放参数，以及预览持续时间、API 恢复去重和显示/隐藏计时回归）。
 - 窗体非全屏、非抢占式鼠标交互、全局热键实时切换、神器点位穿透显示、抽屉平滑伸缩等 Windows 原生行为全自动验证。

@@ -134,9 +134,7 @@ void OverlayUI::ToggleMapVariant() {
         m_last_active_row = -1;
         m_last_toast_seconds = -1;
         m_last_toast_map = m_current_map;
-        m_toast.active = false;
-        m_toast.expire_time = 0.0f;
-        ToastWindow::Instance().Hide();
+        ToastWindow::Instance().HideGameToast();
 
         if (ArtifactViewer::Instance().IsVisible()) {
             if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
@@ -164,21 +162,6 @@ void OverlayUI::ToggleCommanderSelector() {
 }
 
 void OverlayUI::TriggerToast(const ScheduleRow& row, float duration) {
-    m_toast.active = true;
-    m_toast.time_text = row.time_text;
-    m_toast.event_text = row.event_text;
-    m_toast.tier_text = row.tier;
-    m_toast.hybrid_icons = row.hybrids;
-    m_toast.expire_time = duration;
-
-    m_toast.regular_unit_icons.clear();
-    if (!row.tier.empty() && row.tier[0] == 'T') {
-        try {
-            int t_num = std::stoi(row.tier.substr(1));
-            m_toast.regular_unit_icons = TroopManager::Instance().GetUnitsForTier(m_current_troop, t_num);
-        } catch (...) {}
-    }
-
     ToastWindow::Instance().ShowToast(row, m_current_troop, duration);
 }
 
@@ -206,7 +189,7 @@ void OverlayUI::CheckWaveToastAlert(const Sc2GameState& state) {
 
     if (active_row >= 0 && active_seconds > 0) {
         int diff = active_seconds - state.current_seconds;
-        if (diff > 0 && diff <= cfg.time_alert_seconds && m_last_toast_seconds != active_seconds && !m_toast.active) {
+        if (diff > 0 && diff <= cfg.time_alert_seconds && m_last_toast_seconds != active_seconds && !ToastWindow::Instance().IsActive()) {
             TriggerToast(schedule[active_row], (float)cfg.toast_duration_ms / 1000.0f);
             m_last_toast_seconds = active_seconds;
         }
@@ -221,10 +204,7 @@ void OverlayUI::SyncGameState(const Sc2GameState& state, float delta_time) {
             m_current_map = localized_map;
             m_last_active_row = -1;
             m_last_toast_seconds = -1;
-            m_last_toast_map = m_current_map;
-            m_toast.active = false;
-            m_toast.expire_time = 0.0f;
-            ToastWindow::Instance().Hide();
+            ToastWindow::Instance().HideGameToast();
 
             // Refresh or hide artifact viewer for the new map
             if (ArtifactViewer::Instance().IsVisible()) {
@@ -237,35 +217,29 @@ void OverlayUI::SyncGameState(const Sc2GameState& state, float delta_time) {
         }
     }
 
-    // 2. Check game lifecycle triggers: new game, time rewind, map change, or non-in-game state
+    // Only confirmed session boundaries reset per-game deduplication.
     bool new_game = Sc2Client::Instance().ConsumeNewGameEvent() || state.is_new_game_event;
-    bool time_rewound = (m_last_game_seconds > 0 && state.current_seconds < m_last_game_seconds);
+    bool is_in_game = (state.screen_state == "in_game");
+    bool time_rewound = (is_in_game && m_last_game_seconds > 0 && state.current_seconds < m_last_game_seconds);
     bool map_changed = (m_last_toast_map != m_current_map);
-    bool not_in_game = (state.screen_state != "in_game");
 
-    if (new_game || time_rewound || map_changed || not_in_game) {
+    if (new_game || time_rewound || map_changed) {
         m_last_toast_seconds = -1;
         m_last_toast_map = m_current_map;
         m_last_active_row = -1;
-        m_toast.active = false;
-        m_toast.expire_time = 0.0f;
-        ToastWindow::Instance().Hide();
+        ToastWindow::Instance().HideGameToast();
         MutatorManager::Instance().ResetAlerts();
         MutatorAlertWindow::Instance().HideAll();
     }
-    m_last_game_seconds = state.current_seconds;
-
-    // 3. Decay active toast notification internal timer
-    if (m_toast.active) {
-        m_toast.expire_time -= delta_time;
-        if (m_toast.expire_time <= 0.0f) {
-            m_toast.active = false;
-        }
+    if (is_in_game) {
+        m_last_game_seconds = state.current_seconds;
+    } else {
+        // A missing API response is not a new game. Preserve deduplication and previews.
+        ToastWindow::Instance().HideGameToast();
     }
 
-    // 4. Update mutators & toast window with in-game status
-    bool is_in_game = (state.screen_state == "in_game" && state.current_seconds > 0);
-    MutatorManager::Instance().Update(state.current_seconds, delta_time, is_in_game);
+    // The toast window advances its lifetime once per frame, visible or hidden.
+    MutatorManager::Instance().Update(state.current_seconds, delta_time, is_in_game && state.current_seconds > 0);
     ToastWindow::Instance().Update(delta_time);
 }
 
@@ -367,9 +341,7 @@ void OverlayUI::RenderMainHUD(float delta_time) {
                     m_last_active_row = -1;
                     m_last_toast_seconds = -1;
                     m_last_toast_map = m_current_map;
-                    m_toast.active = false;
-                    m_toast.expire_time = 0.0f;
-                    ToastWindow::Instance().Hide();
+                    ToastWindow::Instance().HideGameToast();
                     if (ArtifactViewer::Instance().IsVisible()) {
                         if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
                             ArtifactViewer::Instance().ShowMap(m_current_map);
@@ -394,9 +366,7 @@ void OverlayUI::RenderMainHUD(float delta_time) {
                 m_last_active_row = -1;
                 m_last_toast_seconds = -1;
                 m_last_toast_map = m_current_map;
-                m_toast.active = false;
-                m_toast.expire_time = 0.0f;
-                ToastWindow::Instance().Hide();
+                ToastWindow::Instance().HideGameToast();
                 if (ArtifactViewer::Instance().IsVisible()) {
                     if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
                         ArtifactViewer::Instance().ShowMap(m_current_map);
@@ -419,9 +389,7 @@ void OverlayUI::RenderMainHUD(float delta_time) {
                 m_last_active_row = -1;
                 m_last_toast_seconds = -1;
                 m_last_toast_map = m_current_map;
-                m_toast.active = false;
-                m_toast.expire_time = 0.0f;
-                ToastWindow::Instance().Hide();
+                ToastWindow::Instance().HideGameToast();
                 if (ArtifactViewer::Instance().IsVisible()) {
                     if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
                         ArtifactViewer::Instance().ShowMap(m_current_map);
@@ -456,13 +424,6 @@ void OverlayUI::RenderMainHUD(float delta_time) {
 
         // Auto trigger toast within threshold (ONLY during active in-game match)
         CheckWaveToastAlert(state);
-
-        if (m_toast.active) {
-            m_toast.expire_time -= delta_time;
-            if (m_toast.expire_time <= 0.0f) {
-                m_toast.active = false;
-            }
-        }
 
         // --- Row 5: Schedule Table (Fixed, stable height) ---
         float table_h = (float)cfg.table_height;

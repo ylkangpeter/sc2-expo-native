@@ -12,6 +12,7 @@
     "table_height": 228,
     "time_alert_seconds": 30,
     "toast_allowed": true,
+    "toast_when_hidden": false,
     "toast_border_color": [
         0.0,
         0.75,
