@@ -15,6 +15,7 @@ public:
     void ShowToast(const ScheduleRow& row, const std::string& current_troop, float duration = 8.0f);
     void ShowTestToast();
     void Hide();
+    void HideGameToast();
     void Update(float delta_time);
 
     bool IsActive() const { return m_active; }
@@ -24,10 +25,12 @@ private:
     ~ToastWindow() { Shutdown(); }
 
     void RenderToast();
+    void ShowToast(const ScheduleRow& row, const std::string& current_troop, float duration, bool is_preview);
 
     HWND m_hwnd = nullptr;
     HINSTANCE m_hInstance = nullptr;
     bool m_active = false;
+    bool m_is_preview = false;
     float m_remaining_time = 0.0f;
 
     std::string m_time_text;

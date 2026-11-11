@@ -86,6 +86,8 @@ void MutatorManager::Update(int current_seconds, float delta_time, bool is_in_ga
     }
 
     if (!is_in_game) {
+        // Discard visible notifications, but keep this game's deduplication records.
+        m_active_alerts.clear();
         MutatorAlertWindow::Instance().HideAll();
         return;
     }

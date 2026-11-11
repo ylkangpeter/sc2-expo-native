@@ -14,17 +14,9 @@
 #include "texture_loader.h"
 #include "artifact_viewer.h"
 
-static int g_tests_run = 0;
-static int g_tests_passed = 0;
+#include "test_assert.h"
 
-#define TEST_ASSERT(cond, msg) do { \
-    g_tests_run++; \
-    if (!(cond)) { \
-        std::cerr << "[FAIL] Line " << __LINE__ << ": " << msg << std::endl; \
-    } else { \
-        g_tests_passed++; \
-    } \
-} while(0)
+void TestOverlayLifecycle();
 
 void TestConfig() {
     std::cout << "Running TestConfig..." << std::endl;
@@ -497,6 +489,7 @@ int main() {
     TestCommanderManager();
     TestTextureLoader();
     TestArtifactViewer();
+    TestOverlayLifecycle();
 
     std::cout << "========================================" << std::endl;
     std::cout << "Results: " << g_tests_passed << "/" << g_tests_run << " tests passed." << std::endl;

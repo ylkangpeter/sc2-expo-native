@@ -7,16 +7,6 @@
 #include "schedule_manager.h"
 #include "mutator_manager.h"
 
-struct ToastNotification {
-    bool active = false;
-    std::string time_text;
-    std::string event_text;
-    std::string tier_text;
-    std::vector<std::string> regular_unit_icons;
-    std::vector<std::pair<std::string, int>> hybrid_icons;
-    float expire_time = 0.0f;
-};
-
 struct Sc2GameState;
 
 class OverlayUI {
@@ -69,8 +59,6 @@ private:
     int m_last_toast_seconds = -1;
     int m_last_game_seconds = -1;
     std::string m_last_toast_map;
-
-    ToastNotification m_toast;
 
     // Ephemeral notification (e.g. "已复制指挥官替换链接!")
     std::string m_notice_text;

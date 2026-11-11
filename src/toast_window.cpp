@@ -70,6 +70,10 @@ void ToastWindow::Shutdown() {
 }
 
 void ToastWindow::ShowToast(const ScheduleRow& row, const std::string& current_troop, float duration) {
+    ShowToast(row, current_troop, duration, false);
+}
+
+void ToastWindow::ShowToast(const ScheduleRow& row, const std::string& current_troop, float duration, bool is_preview) {
     const auto& cfg = AppConfig::Instance();
     if (!cfg.toast_allowed) return;
 
@@ -87,6 +91,7 @@ void ToastWindow::ShowToast(const ScheduleRow& row, const std::string& current_t
     }
 
     m_remaining_time = duration > 0.0f ? duration : (float)cfg.toast_duration_ms / 1000.0f;
+    m_is_preview = is_preview;
     m_active = true;
     RenderToast();
 }
@@ -96,15 +101,20 @@ void ToastWindow::ShowTestToast() {
     test_row.time_text = "03:00";
     test_row.event_text = "进攻波次预警 (Toast 预览测试)";
     test_row.tier = "T1";
-    ShowToast(test_row, "", 6.0f);
+    ShowToast(test_row, "", 6.0f, true);
 }
 
 void ToastWindow::Hide() {
     m_active = false;
+    m_is_preview = false;
     m_remaining_time = 0.0f;
     if (m_hwnd) {
         ShowWindow(m_hwnd, SW_HIDE);
     }
+}
+
+void ToastWindow::HideGameToast() {
+    if (!m_is_preview) Hide();
 }
 
 void ToastWindow::Update(float delta_time) {
