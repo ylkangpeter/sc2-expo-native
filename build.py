@@ -4,13 +4,32 @@ import os
 import shutil
 import zipfile
 import time
+import glob
 
-CLANG_PATH = r"C:\Users\<USERNAME>\AppData\Local\Microsoft\WinGet\Packages\MartinStorsjo.LLVM-MinGW.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\llvm-mingw-20261020-ucrt-x86_64\bin\clang++.exe"
-WINDRES_PATH = r"C:\Users\<USERNAME>\AppData\Local\Microsoft\WinGet\Packages\MartinStorsjo.LLVM-MinGW.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\llvm-mingw-20261020-ucrt-x86_64\bin\x86_64-w64-mingw32-windres.exe"
+def find_toolchain():
+    # 1. Search standard WinGet LLVM-MinGW installation directories
+    patterns = [
+        os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\MartinStorsjo.LLVM-MinGW.UCRT*\*\bin"),
+        r"C:\Users\*\AppData\Local\Microsoft\WinGet\Packages\MartinStorsjo.LLVM-MinGW.UCRT*\*\bin",
+        "/mnt/c/Users/*/AppData/Local/Microsoft/WinGet/Packages/MartinStorsjo.LLVM-MinGW.UCRT*/*/bin"
+    ]
+    for pat in patterns:
+        matches = glob.glob(pat)
+        if matches:
+            bin_dir = matches[0]
+            c = os.path.join(bin_dir, "clang++.exe" if sys.platform == "win32" or pat.startswith("/mnt") else "clang++")
+            w = os.path.join(bin_dir, "x86_64-w64-mingw32-windres.exe")
+            if os.path.exists(c) and os.path.exists(w):
+                return c, w
 
-if sys.platform != "win32":
-    CLANG_PATH = "/mnt/c/Users/<USERNAME>/AppData/Local/Microsoft/WinGet/Packages/MartinStorsjo.LLVM-MinGW.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe/llvm-mingw-20261020-ucrt-x86_64/bin/clang++.exe"
-    WINDRES_PATH = "/mnt/c/Users/<USERNAME>/AppData/Local/Microsoft/WinGet/Packages/MartinStorsjo.LLVM-MinGW.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe/llvm-mingw-20261020-ucrt-x86_64/bin/x86_64-w64-mingw32-windres.exe"
+    # 2. Check system PATH
+    clang = shutil.which("clang++") or shutil.which("clang++.exe") or "clang++"
+    windres = (shutil.which("x86_64-w64-mingw32-windres") or 
+               shutil.which("x86_64-w64-mingw32-windres.exe") or 
+               shutil.which("windres.exe") or "windres")
+    return clang, windres
+
+CLANG_PATH, WINDRES_PATH = find_toolchain()
 
 def build():
     root = os.path.dirname(os.path.abspath(__file__))
@@ -32,9 +51,12 @@ def build():
 
     # 2. Compile Windows Resource (.rc)
     if os.path.exists("res/resource.rc"):
-        print("Compiling Windows resource...")
-        res_cmd = [WINDRES_PATH, "res/resource.rc", "-O", "coff", "-o", "res/resource.o"]
-        subprocess.run(res_cmd, check=True, stdin=subprocess.DEVNULL)
+        rc_mtime = os.path.getmtime("res/resource.rc")
+        obj_mtime = os.path.getmtime("res/resource.o") if os.path.exists("res/resource.o") else 0
+        if rc_mtime > obj_mtime:
+            print("Compiling Windows resource...")
+            res_cmd = [WINDRES_PATH, "res/resource.rc", "-O", "coff", "-o", "res/resource.o"]
+            subprocess.run(res_cmd, check=True, stdin=subprocess.DEVNULL)
     
     sources = [
         "vendor/imgui/imgui.cpp",
@@ -124,12 +146,23 @@ def build():
     if os.path.exists(readme_src):
         shutil.copy2(readme_src, os.path.join(app_dir, "README.md"))
 
+    # Clean any temporary or backup files in dist/sc2_expo
+    for fname in os.listdir(app_dir):
+        if fname.endswith(".old") or fname.endswith(".bak") or fname.endswith(".tmp"):
+            try:
+                os.remove(os.path.join(app_dir, fname))
+                print(f"Cleaned backup file: {fname}")
+            except Exception:
+                pass
+
     # 4. Create ZIP archive in dist/
     zip_path = os.path.join(dist_dir, "sc2_expo_native.zip")
     print(f"Creating package archive: {zip_path} ...")
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for foldername, subfolders, filenames in os.walk(app_dir):
             for filename in filenames:
+                if filename.endswith(".old") or filename.endswith(".bak") or filename.endswith(".tmp"):
+                    continue
                 filepath = os.path.join(foldername, filename)
                 arcname = os.path.relpath(filepath, dist_dir)
                 zf.write(filepath, arcname)
