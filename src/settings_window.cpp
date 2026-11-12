@@ -29,6 +29,12 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
         return true;
 
     switch (msg) {
+    case WM_NCCALCSIZE:
+        if (wParam == TRUE) {
+            return 0; // Eliminates any non-client borders/white seams
+        }
+        break;
+
     case WM_CLOSE:
         SettingsWindow::Instance().Hide();
         return 0;
@@ -79,15 +85,19 @@ bool SettingsWindow::Init(HINSTANCE hInstance, ID3D11Device* device, ID3D11Devic
     };
     RegisterClassExW(&wc);
 
-    // 2. Position Centered on Screen (Width: 380, Height: 600)
-    int win_w = 380;
-    int win_h = 600;
+    // 2. Position Centered on Screen, dynamically sized based on screen resolution
     int screen_w = GetSystemMetrics(SM_CXSCREEN);
     int screen_h = GetSystemMetrics(SM_CYSCREEN);
+
+    int dummy_mw, dummy_mh, dummy_th, win_w, win_h;
+    float dummy_fs, dummy_ts;
+    AppConfig::GetResolutionDefaults(screen_w, screen_h, dummy_mw, dummy_mh, dummy_th,
+                                     dummy_fs, dummy_ts, win_w, win_h);
+
     int win_x = (screen_w - win_w) / 2;
     int win_y = (screen_h - win_h) / 2;
 
-    // 3. Create Standalone Popup Tool Window (Independent from Main HUD)
+    // 3. Create Standalone Popup Tool Window (Clean borderless, no native white caption line)
     m_hwnd = CreateWindowExW(
         WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
         wc.lpszClassName,
@@ -98,6 +108,10 @@ bool SettingsWindow::Init(HINSTANCE hInstance, ID3D11Device* device, ID3D11Devic
     );
 
     if (!m_hwnd) return false;
+
+    // Extend 0 frame to prevent DWM from rendering any top white line/seam
+    MARGINS margins = { 0, 0, 0, 0 };
+    DwmExtendFrameIntoClientArea(m_hwnd, &margins);
 
     // 4. Create SwapChain
     IDXGIDevice* pDXGIDevice = nullptr;
@@ -146,13 +160,13 @@ bool SettingsWindow::Init(HINSTANCE hInstance, ID3D11Device* device, ID3D11Devic
     ImGui::StyleColorsDark();
 
     ImGuiStyle& style = ImGui::GetStyle();
-    style.WindowBorderSize = 1.0f;
+    style.WindowBorderSize = 0.0f;
     style.FrameBorderSize = 0.0f;
     style.WindowRounding = 0.0f;
     style.FrameRounding = 4.0f;
     style.ScrollbarRounding = 4.0f;
     style.Colors[ImGuiCol_WindowBg] = ImVec4(0.12f, 0.14f, 0.18f, 1.0f);
-    style.Colors[ImGuiCol_Border] = ImVec4(0.0f, 0.6f, 0.9f, 0.8f);
+    style.Colors[ImGuiCol_Border] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
     style.Colors[ImGuiCol_Header] = ImVec4(0.0f, 0.5f, 0.8f, 0.45f);
     style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.0f, 0.6f, 0.9f, 0.65f);
     style.Colors[ImGuiCol_Button] = ImVec4(0.18f, 0.22f, 0.28f, 0.85f);
@@ -264,6 +278,9 @@ void SettingsWindow::Render(float delta_time) {
 void SettingsWindow::RenderUI(float delta_time) {
     auto& cfg = AppConfig::Instance();
 
+    // Scale font size according to user configuration
+    ImGui::GetStyle().FontScaleMain = (cfg.font_scale > 0.5f ? cfg.font_scale : 1.0f);
+
     ImGuiIO& io = ImGui::GetIO();
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(io.DisplaySize);
@@ -273,14 +290,18 @@ void SettingsWindow::RenderUI(float delta_time) {
                             ImGuiWindowFlags_NoBringToFrontOnFocus;
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0f, 12.0f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
 
     if (m_save_notice_timer > 0.0f) {
         m_save_notice_timer -= delta_time;
     }
 
     if (ImGui::Begin("SettingsRootWindow", nullptr, flags)) {
+        float avail_w = ImGui::GetContentRegionAvail().x;
+        float control_w = std::floor(avail_w * 0.58f);
+
         // Drag window by clicking and dragging on the background or title
         if (ImGui::IsWindowHovered() && ImGui::IsMouseDragging(0) && !ImGui::IsAnyItemActive()) {
             ReleaseCapture();
@@ -297,8 +318,9 @@ void SettingsWindow::RenderUI(float delta_time) {
             }
         }
 
-        ImGui::SameLine(ImGui::GetWindowWidth() - 42);
-        if (ImGui::Button("X##CloseSettings", ImVec2(28, 22))) {
+        float close_size = ImGui::GetFrameHeight();
+        ImGui::SameLine(ImGui::GetWindowWidth() - close_size - ImGui::GetStyle().WindowPadding.x);
+        if (ImGui::Button("X##CloseSettings", ImVec2(close_size, close_size))) {
             m_need_hide = true;
         }
 
@@ -309,18 +331,18 @@ void SettingsWindow::RenderUI(float delta_time) {
         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "[ 窗体尺寸设置 ]");
 
         bool size_changed = false;
-        ImGui::SetNextItemWidth(210);
-        if (ImGui::SliderInt("主窗宽度", &cfg.main_window_width, 140, 320, "%d px")) {
+        ImGui::SetNextItemWidth(control_w);
+        if (ImGui::SliderInt("主窗宽度", &cfg.main_window_width, 140, 800, "%d px")) {
             size_changed = true;
         }
 
-        ImGui::SetNextItemWidth(210);
-        if (ImGui::SliderInt("主窗高度", &cfg.main_window_height, 180, 500, "%d px")) {
+        ImGui::SetNextItemWidth(control_w);
+        if (ImGui::SliderInt("主窗高度", &cfg.main_window_height, 180, 1400, "%d px")) {
             size_changed = true;
         }
 
-        ImGui::SetNextItemWidth(210);
-        if (ImGui::SliderInt("表格高度", &cfg.table_height, 90, 320, "%d px")) {
+        ImGui::SetNextItemWidth(control_w);
+        if (ImGui::SliderInt("表格高度", &cfg.table_height, 90, 1000, "%d px")) {
             size_changed = true;
         }
 
@@ -330,10 +352,12 @@ void SettingsWindow::RenderUI(float delta_time) {
 
         ImGui::Spacing();
 
-        // 2. Font Size
+        // 2. Font Size (Expanded range: 0.8x to 2.8x, clean 0.1 step)
         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "[ 文字字体缩放 ]");
-        ImGui::SetNextItemWidth(210);
-        ImGui::SliderFloat("字体大小", &cfg.font_scale, 0.75f, 1.50f, "%.2f x");
+        ImGui::SetNextItemWidth(control_w);
+        if (ImGui::SliderFloat("字体大小", &cfg.font_scale, 0.8f, 2.8f, "%.1f x")) {
+            cfg.font_scale = std::round(cfg.font_scale * 10.0f) / 10.0f;
+        }
 
         ImGui::Spacing();
 
@@ -346,13 +370,15 @@ void SettingsWindow::RenderUI(float delta_time) {
             ImGui::SetTooltip("开启后，即使通过托盘隐藏了主悬浮窗，在游戏中到达波次时间仍会正常弹出屏幕 Toast 预警（默认关闭）");
         }
 
-        ImGui::SetNextItemWidth(210);
+        ImGui::SetNextItemWidth(control_w);
         ImGui::SliderFloat("Toast垂直位置", &cfg.toast_position_y, 0.05f, 0.95f, "%.2f (屏幕比例)");
 
-        ImGui::SetNextItemWidth(210);
-        ImGui::SliderFloat("Toast尺寸缩放", &cfg.toast_scale, 0.60f, 2.00f, "%.2f x");
+        ImGui::SetNextItemWidth(control_w);
+        if (ImGui::SliderFloat("Toast尺寸缩放", &cfg.toast_scale, 0.60f, 3.00f, "%.1f x")) {
+            cfg.toast_scale = std::round(cfg.toast_scale * 10.0f) / 10.0f;
+        }
 
-        ImGui::SetNextItemWidth(210);
+        ImGui::SetNextItemWidth(control_w);
         int duration_sec = cfg.toast_duration_ms / 1000;
         if (ImGui::SliderInt("显示持续时间", &duration_sec, 2, 15, "%d 秒")) {
             cfg.toast_duration_ms = duration_sec * 1000;
@@ -365,14 +391,15 @@ void SettingsWindow::RenderUI(float delta_time) {
             cfg.toast_border_color = { 0.0f, 0.75f, 1.0f };
         }
 
-        ImGui::SetNextItemWidth(210);
+        ImGui::SetNextItemWidth(control_w);
         ImGui::ColorEdit3("Toast文字颜色", cfg.toast_text_color.data());
 
-        ImGui::SetNextItemWidth(210);
+        ImGui::SetNextItemWidth(control_w);
         ImGui::ColorEdit3("Toast边框颜色", cfg.toast_border_color.data());
 
         ImGui::Spacing();
-        if (ImGui::Button("测试 Toast 效果", ImVec2(350, 28))) {
+        float toast_btn_h = std::max(28.0f * cfg.font_scale, ImGui::GetFrameHeight() * 1.15f);
+        if (ImGui::Button("测试 Toast 效果", ImVec2(avail_w, toast_btn_h))) {
             ToastWindow::Instance().ShowTestToast();
         }
 
@@ -380,32 +407,29 @@ void SettingsWindow::RenderUI(float delta_time) {
         ImGui::Separator();
         ImGui::Spacing();
 
-        // 4. Action Buttons
-        if (ImGui::Button("保存设置", ImVec2(105, 30))) {
+        // 4. Action Buttons (Equally distributed 33% each across available width)
+        float spacing = ImGui::GetStyle().ItemSpacing.x;
+        float act_btn_w = std::floor((avail_w - 2.0f * spacing) / 3.0f);
+        float act_btn_h = std::max(30.0f * cfg.font_scale, ImGui::GetFrameHeight() * 1.25f);
+
+        if (ImGui::Button("保存设置", ImVec2(act_btn_w, act_btn_h))) {
             cfg.Save();
             m_save_notice_timer = 3.0f;
         }
 
         ImGui::SameLine();
-        if (ImGui::Button("恢复默认", ImVec2(105, 30))) {
-            cfg.main_window_width = 173;
-            cfg.main_window_height = 340;
-            cfg.table_height = 228;
-            cfg.font_scale = 1.0f;
-            cfg.toast_allowed = true;
-            cfg.toast_when_hidden = false;
-            cfg.toast_position_y = 0.18f;
-            cfg.toast_scale = 1.43f;
-            cfg.toast_duration_ms = 8000;
-            cfg.toast_text_color = { 0.0f, 0.86f, 1.0f };
-            cfg.toast_border_color = { 0.0f, 0.75f, 1.0f };
+        if (ImGui::Button("恢复默认", ImVec2(act_btn_w, act_btn_h))) {
+            int sw = GetSystemMetrics(SM_CXSCREEN);
+            int sh = GetSystemMetrics(SM_CYSCREEN);
+            cfg.ResetToResolutionDefaults(sw, sh);
             cfg.Save();
             m_need_update_dimensions = true;
             m_save_notice_timer = 3.0f;
         }
 
         ImGui::SameLine();
-        if (ImGui::Button("关闭", ImVec2(80, 30))) {
+        float close_btn_w = avail_w - (act_btn_w * 2.0f + spacing * 2.0f);
+        if (ImGui::Button("关闭", ImVec2(close_btn_w, act_btn_h))) {
             m_need_hide = true;
         }
 
@@ -416,5 +440,6 @@ void SettingsWindow::RenderUI(float delta_time) {
     }
     ImGui::End();
 
+    ImGui::PopStyleColor(1);
     ImGui::PopStyleVar(3);
 }

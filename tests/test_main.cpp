@@ -46,6 +46,40 @@ void TestConfig() {
     TEST_ASSERT(test_cfg.toast_text_color.size() == 3, "Reloaded toast_text_color should have 3 components");
     TEST_ASSERT(test_cfg.toast_border_color.size() == 3, "Reloaded toast_border_color should have 3 components");
     remove("test_config.json");
+
+    // Test Resolution Defaults
+    {
+        int mw, mh, th, sw, sh;
+        float fs, ts;
+        // 1080p
+        AppConfig::GetResolutionDefaults(1920, 1080, mw, mh, th, fs, ts, sw, sh);
+        TEST_ASSERT(mw == 180, "1080p main window width should be 180");
+        TEST_ASSERT(mh == 350, "1080p main window height should be 350");
+        TEST_ASSERT(th == 235, "1080p table height should be 235");
+        TEST_ASSERT(std::abs(fs - 1.0f) < 0.05f, "1080p font scale should be 1.0");
+        TEST_ASSERT(sw == 380, "1080p setting width should be 380");
+        TEST_ASSERT(sh == 600, "1080p setting height should be 600");
+
+        // 2K (2560x1440)
+        AppConfig::GetResolutionDefaults(2560, 1440, mw, mh, th, fs, ts, sw, sh);
+        TEST_ASSERT(mw > 230 && mw < 250, "2K main window width should scale with width ratio");
+        TEST_ASSERT(mh > 450 && mh < 480, "2K main window height should scale");
+        TEST_ASSERT(fs >= 1.3f, "2K font scale should be >= 1.3");
+        TEST_ASSERT(sw > 490, "2K setting width should be > 490");
+        TEST_ASSERT(sh > 750, "2K setting height should be > 750");
+
+        // 4K (3840x2160)
+        AppConfig::GetResolutionDefaults(3840, 2160, mw, mh, th, fs, ts, sw, sh);
+        TEST_ASSERT(mw == 360, "4K main window width should be 360");
+        TEST_ASSERT(mh == 700, "4K main window height should be 700");
+        TEST_ASSERT(std::abs(fs - 2.0f) < 0.05f, "4K font scale should be 2.0");
+        TEST_ASSERT(sw == 760, "4K setting width should be 760");
+        TEST_ASSERT(sh == 1200, "4K setting height should be 1200");
+
+        // Ultrawide (3440x1440) should use 16:9 equivalent to avoid inflating
+        AppConfig::GetResolutionDefaults(3440, 1440, mw, mh, th, fs, ts, sw, sh);
+        TEST_ASSERT(mw > 230 && mw < 250, "Ultrawide 1440p should use 16:9 equivalent width ratio");
+    }
 }
 
 void TestMapDetector() {

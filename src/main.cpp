@@ -173,18 +173,43 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     // 1. Initialize COM for WIC & Shell
     CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
 
-    // 2. DPI Awareness
-    SetProcessDPIAware();
-
-    // 3. Load Config
-    auto& cfg = AppConfig::Instance();
+    // 2. DPI Awareness (Per Monitor V2 preferred, fallback to SetProcessDPIAware)
+    typedef BOOL(WINAPI* SetProcessDpiAwarenessContextProc)(DPI_AWARENESS_CONTEXT);
+    HMODULE hUser32 = GetModuleHandleW(L"user32.dll");
+    if (hUser32) {
+        SetProcessDpiAwarenessContextProc setDpiContext =
+            (SetProcessDpiAwarenessContextProc)GetProcAddress(hUser32, "SetProcessDpiAwarenessContext");
+        if (setDpiContext) {
+            setDpiContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        } else {
+            SetProcessDPIAware();
+        }
+    } else {
+        SetProcessDPIAware();
+    }
 
     // 3. Screen Dimensions & Window Bounds
     int screen_w = GetSystemMetrics(SM_CXSCREEN);
     int screen_h = GetSystemMetrics(SM_CYSCREEN);
 
-    int win_w = cfg.main_window_width > 120 ? cfg.main_window_width : 173;
-    int win_h = cfg.main_window_height > 120 ? cfg.main_window_height : 340;
+    int def_main_w, def_main_h, def_tbl_h, def_set_w, def_set_h;
+    float def_font_scale, def_toast_scale;
+    AppConfig::GetResolutionDefaults(screen_w, screen_h, def_main_w, def_main_h, def_tbl_h,
+                                     def_font_scale, def_toast_scale, def_set_w, def_set_h);
+
+    // 4. Load Config
+    auto& cfg = AppConfig::Instance();
+
+    // Check if configuration needs initial resolution-based defaults:
+    // If running with legacy 1080p defaults on a high-DPI display, adapt automatically
+    if (cfg.main_window_width == 173 && cfg.main_window_height == 340 &&
+        (cfg.font_scale >= 0.99f && cfg.font_scale <= 1.01f) && screen_w > 2000) {
+        cfg.ResetToResolutionDefaults(screen_w, screen_h);
+        cfg.Save();
+    }
+
+    int win_w = cfg.main_window_width > 120 ? cfg.main_window_width : def_main_w;
+    int win_h = cfg.main_window_height > 120 ? cfg.main_window_height : def_main_h;
     int win_x = cfg.main_window_x;
     int win_y = cfg.main_window_y;
 

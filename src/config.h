@@ -62,6 +62,12 @@ struct AppConfig {
     std::unordered_map<std::string, ArtifactPos> artifact_positions;
 
     static AppConfig& Instance();
+    static void GetResolutionDefaults(int screen_w, int screen_h,
+                                      int& out_main_w, int& out_main_h, int& out_table_h,
+                                      float& out_font_scale, float& out_toast_scale,
+                                      int& out_setting_w, int& out_setting_h);
+    void ResetToResolutionDefaults(int screen_w, int screen_h);
+
     bool Load(const std::string& path = "config.json");
     bool Save(const std::string& path = "config.json") const;
 };
