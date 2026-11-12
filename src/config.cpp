@@ -44,6 +44,7 @@ void AppConfig::ResetToResolutionDefaults(int screen_w, int screen_h) {
     GetResolutionDefaults(screen_w, screen_h,
                           main_window_width, main_window_height, table_height,
                           font_scale, toast_scale, dummy_sw, dummy_sh);
+    config_version = 2;
     toast_allowed = true;
     toast_when_hidden = false;
     toast_position_y = 0.18f;
@@ -78,6 +79,8 @@ bool AppConfig::Load(const std::string& path) {
 
         if (j.contains("current_region")) current_region = j["current_region"].get<std::string>();
         if (j.contains("current_language")) current_language = j["current_language"].get<std::string>();
+        if (j.contains("config_version")) config_version = j["config_version"].get<int>();
+        else config_version = 0; // Legacy v1.0.0 unversioned config
         if (j.contains("debug_mode")) debug_mode = j["debug_mode"].get<bool>();
         if (j.contains("debug_time_factor")) debug_time_factor = j["debug_time_factor"].get<float>();
         if (j.contains("main_window_x")) main_window_x = j["main_window_x"].get<int>();
@@ -111,6 +114,7 @@ bool AppConfig::Load(const std::string& path) {
 bool AppConfig::Save(const std::string& path) const {
     try {
         json j;
+        j["config_version"] = config_version;
         j["current_region"] = current_region;
         j["current_language"] = current_language;
         j["debug_mode"] = debug_mode;

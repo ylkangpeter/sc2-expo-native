@@ -25,14 +25,17 @@ struct AppConfig {
     std::string screenshot_shortcut = "ctrl + shift + -";
     std::string show_artifact_shortcut = "ctrl + shift + \\";
 
-    // Overlay Window Settings
+    // Overlay Window Settings (Base 1080p reference, dynamically scaled)
     int main_window_x = 0;
     int main_window_y = 300;
-    int main_window_width = 173;
-    int main_window_height = 340;
-    int table_height = 228;
+    int main_window_width = 180;
+    int main_window_height = 350;
+    int table_height = 235;
     int table_font_size = 13;
     float font_scale = 1.0f;
+
+    // Config schema version for safe migrations without guessing values
+    int config_version = 2;
 
     // Toast configuration
     bool toast_allowed = true;
@@ -67,6 +70,9 @@ struct AppConfig {
                                       float& out_font_scale, float& out_toast_scale,
                                       int& out_setting_w, int& out_setting_h);
     void ResetToResolutionDefaults(int screen_w, int screen_h);
+
+    bool NeedsMigration() const { return config_version < 2; }
+    void MarkMigrated() { config_version = 2; }
 
     bool Load(const std::string& path = "config.json");
     bool Save(const std::string& path = "config.json") const;

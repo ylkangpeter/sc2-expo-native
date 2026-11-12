@@ -74,16 +74,19 @@ void OverlayUI::UpdateWindowDimensions() {
     if (!m_hwnd) return;
     const auto& cfg = AppConfig::Instance();
 
+    float font_scale = cfg.font_scale > 0.5f ? cfg.font_scale : 1.0f;
     int base_w = cfg.main_window_width > 120 ? cfg.main_window_width : 180;
     int base_h = cfg.main_window_height > 120 ? cfg.main_window_height : 350;
 
-    int extra_h = (int)std::round(36.0f * (cfg.font_scale > 0.5f ? cfg.font_scale : 1.0f));
+    int extra_h = (int)std::round(36.0f * font_scale);
     int target_w = base_w;
     int target_h = m_locked ? base_h : (base_h + extra_h);
 
     if (m_show_commander_selector) {
-        target_w = base_w + 685;
-        target_h = std::max(target_h, 350);
+        float avatar_size = std::clamp(std::round(56.0f * font_scale), 48.0f, 96.0f);
+        int panel_w = (int)std::round(9.0f * (avatar_size + 8.0f) + 40.0f);
+        target_w = base_w + std::max(685, panel_w);
+        target_h = std::max(target_h, (int)std::round(380.0f * font_scale));
     }
 
     SetWindowPos(m_hwnd, HWND_TOPMOST, 0, 0, target_w, target_h,
@@ -333,11 +336,14 @@ void OverlayUI::RenderMainHUD(float delta_time) {
 
         float spacing = ImGui::GetStyle().ItemSpacing.x;
         if (has_variant) {
-            float btn_w = std::max(26.0f * font_scale, avail_w * 0.14f);
+            float opt1_w = ImGui::CalcTextSize(var.opt1.c_str()).x;
+            float opt2_w = ImGui::CalcTextSize(var.opt2.c_str()).x;
+            float btn_w = std::max(opt1_w, opt2_w) + ImGui::GetStyle().FramePadding.x * 2.0f + 6.0f;
             float btn_h = ImGui::GetFrameHeight();
-            float combo_w = avail_w - (2.0f * btn_w + spacing) - spacing;
-            if (combo_w < 50.0f) combo_w = 50.0f;
+            float min_combo_w = ImGui::CalcTextSize("地图..").x + btn_h;
+            bool can_fit = (avail_w >= (btn_w * 2.0f + spacing * 2.0f + min_combo_w));
 
+            float combo_w = can_fit ? (avail_w - (2.0f * btn_w + spacing) - spacing) : avail_w;
             ImGui::SetNextItemWidth(combo_w);
             if (ImGui::BeginCombo("##MapCombo", m_current_map.c_str())) {
                 for (const auto& m : maps) {
@@ -362,7 +368,13 @@ void OverlayUI::RenderMainHUD(float delta_time) {
                 ImGui::EndCombo();
             }
 
-            ImGui::SameLine();
+            if (can_fit) {
+                ImGui::SameLine();
+            } else {
+                // When space is extremely tight, place buttons on the next row aligned right
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail_w - (btn_w * 2.0f + spacing));
+            }
+
             bool is_opt1 = (var.current_suffix == var.opt1);
             if (is_opt1) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.6f, 0.9f, 0.9f));
             if (ImGui::Button(var.opt1.c_str(), ImVec2(btn_w, btn_h))) {
@@ -601,10 +613,14 @@ void OverlayUI::RenderCommanderSelector(float delta_time) {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
 
     if (ImGui::Begin("CommanderSelectorPanel", nullptr, flags)) {
+        float font_scale = cfg.font_scale > 0.5f ? cfg.font_scale : 1.0f;
+
         // Header
         ImGui::TextColored(ImVec4(0.0f, 0.8f, 1.0f, 1.0f), "指挥官替换器 (Commander Selector)");
-        ImGui::SameLine(ImGui::GetWindowWidth() - 75);
-        if (ImGui::Button("收起 X", ImVec2(65, 22))) {
+        float close_w = ImGui::CalcTextSize("收起 X").x + ImGui::GetStyle().FramePadding.x * 2.0f + 8.0f;
+        float close_h = ImGui::GetFrameHeight();
+        ImGui::SameLine(ImGui::GetWindowWidth() - close_w - ImGui::GetStyle().WindowPadding.x);
+        if (ImGui::Button("收起 X", ImVec2(close_w, close_h))) {
             ToggleCommanderSelector();
         }
 
@@ -615,10 +631,12 @@ void OverlayUI::RenderCommanderSelector(float delta_time) {
         ImGui::Text("选择服务器区域: ");
         ImGui::SameLine();
         std::vector<std::string> regions = { "CN", "KR", "EU", "US" };
+        float reg_h = ImGui::GetFrameHeight();
         for (const auto& reg : regions) {
+            float reg_w = ImGui::CalcTextSize(reg.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f + 10.0f;
             bool is_curr = (m_current_region == reg);
             if (is_curr) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.6f, 0.9f, 0.9f));
-            if (ImGui::Button(reg.c_str(), ImVec2(45, 24))) {
+            if (ImGui::Button(reg.c_str(), ImVec2(reg_w, reg_h))) {
                 m_current_region = reg;
                 AppConfig::Instance().current_region = reg;
                 AppConfig::Instance().Save();
@@ -629,7 +647,8 @@ void OverlayUI::RenderCommanderSelector(float delta_time) {
         ImGui::NewLine();
         ImGui::Spacing();
 
-        // Commander avatars grid (2 rows of commanders)
+        // Commander avatars grid (2 rows of commanders, dynamically scaled)
+        float avatar_size = std::clamp(std::round(56.0f * font_scale), 48.0f, 96.0f);
         const auto& grid = CommanderManager::Instance().GetAvatarGrid();
         for (const auto& row : grid) {
             for (const auto& cmd : row) {
@@ -637,14 +656,14 @@ void OverlayUI::RenderCommanderSelector(float delta_time) {
                 TextureData td = TextureLoader::Instance().LoadTexture(icon_path);
 
                 if (td.srv) {
-                    if (ImGui::ImageButton(cmd.c_str(), (ImTextureID)td.srv, ImVec2(56, 56))) {
+                    if (ImGui::ImageButton(cmd.c_str(), (ImTextureID)td.srv, ImVec2(avatar_size, avatar_size))) {
                         if (CommanderManager::Instance().CopyReplacementLink(cmd, m_current_region)) {
                             m_notice_text = "已复制指令: 替换为 " + cmd + " 指挥官";
                             m_notice_expire = 3.5f;
                         }
                     }
                 } else {
-                    if (ImGui::Button(cmd.c_str(), ImVec2(56, 56))) {
+                    if (ImGui::Button(cmd.c_str(), ImVec2(avatar_size, avatar_size))) {
                         if (CommanderManager::Instance().CopyReplacementLink(cmd, m_current_region)) {
                             m_notice_text = "已复制指令: 替换为 " + cmd + " 指挥官";
                             m_notice_expire = 3.5f;
@@ -663,8 +682,12 @@ void OverlayUI::RenderCommanderSelector(float delta_time) {
         ImGui::Separator();
         ImGui::Spacing();
 
-        // Random & Wiki buttons
-        if (ImGui::Button("随机指挥官 (Random)", ImVec2(165, 30))) {
+        // Random & Wiki buttons (scaled dynamically based on text metrics)
+        float btn1_w = ImGui::CalcTextSize("随机指挥官 (Random)").x + ImGui::GetStyle().FramePadding.x * 2.0f + 12.0f;
+        float btn2_w = ImGui::CalcTextSize("突变列表 Wiki").x + ImGui::GetStyle().FramePadding.x * 2.0f + 12.0f;
+        float b_h = ImGui::GetFrameHeight() * 1.15f;
+
+        if (ImGui::Button("随机指挥官 (Random)", ImVec2(btn1_w, b_h))) {
             std::string picked = CommanderManager::Instance().PickRandomCommander(m_current_region, AppConfig::Instance().blacklist);
             if (!picked.empty()) {
                 CommanderManager::Instance().CopyReplacementLink(picked, m_current_region);
@@ -674,7 +697,7 @@ void OverlayUI::RenderCommanderSelector(float delta_time) {
         }
 
         ImGui::SameLine();
-        if (ImGui::Button("突变列表 Wiki", ImVec2(140, 30))) {
+        if (ImGui::Button("突变列表 Wiki", ImVec2(btn2_w, b_h))) {
             ShellExecuteA(NULL, "open", WIKI_URL, NULL, NULL, SW_SHOWNORMAL);
         }
 

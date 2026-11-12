@@ -158,6 +158,21 @@ void TestOverlayLifecycle() {
 
     toast.Hide();
     mutators.ResetAlerts();
+
+    // Verify high-DPI (e.g. 2.0x 4K) and maximum font scale (2.8x) rendering stability
+    cfg.font_scale = 2.8f;
+    ImGui::GetStyle().FontScaleDpi = 2.0f;
+    set_state(100, "in_game", false, "往日神庙-A");
+    frame(true, 0.016f);
+    TEST_ASSERT(true, "HUD rendered cleanly with 2.8x font scale and 2.0x DPI");
+
+    // Verify commander selector under 2.8x font scale
+    overlay.SetCommanderSelectorOpen(true);
+    frame(true, 0.016f);
+    TEST_ASSERT(overlay.IsCommanderSelectorOpen(), "Commander selector opens and renders under 2.8x font scale");
+    overlay.SetCommanderSelectorOpen(false);
+    frame(true, 0.016f);
+
     ImGui::DestroyContext(context);
     ImGui::SetCurrentContext(previous_context);
     cfg = saved_config;

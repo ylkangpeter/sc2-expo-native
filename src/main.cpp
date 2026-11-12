@@ -54,6 +54,19 @@ struct ImGuiContextScope {
     }
 };
 
+static UINT GetWindowDPI(HWND hwnd) {
+    typedef UINT(WINAPI* GetDpiForWindowProc)(HWND);
+    static HMODULE hUser32 = GetModuleHandleW(L"user32.dll");
+    if (hUser32 && hwnd) {
+        static GetDpiForWindowProc fn = (GetDpiForWindowProc)GetProcAddress(hUser32, "GetDpiForWindow");
+        if (fn) {
+            UINT dpi = fn(hwnd);
+            if (dpi > 0) return dpi;
+        }
+    }
+    return 96;
+}
+
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     ImGuiContextScope scope(g_mainImGuiContext);
 
@@ -61,6 +74,33 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         return true;
 
     switch (msg) {
+    case WM_DPICHANGED: {
+        UINT new_dpi_x = LOWORD(wParam);
+        float dpi_scale = (float)new_dpi_x / 96.0f;
+        if (g_mainImGuiContext) {
+            ImGuiContextScope local_scope(g_mainImGuiContext);
+            ImGui::GetStyle().FontScaleDpi = dpi_scale;
+        }
+
+        RECT* prc = (RECT*)lParam;
+        if (prc) {
+            SetWindowPos(hWnd, nullptr,
+                         prc->left, prc->top,
+                         prc->right - prc->left,
+                         prc->bottom - prc->top,
+                         SWP_NOZORDER | SWP_NOACTIVATE);
+
+            auto& cfg = AppConfig::Instance();
+            cfg.main_window_x = prc->left;
+            cfg.main_window_y = prc->top;
+            cfg.main_window_width = prc->right - prc->left;
+            cfg.main_window_height = prc->bottom - prc->top;
+            cfg.Save();
+            LockWindow::Instance().UpdatePosition(prc->left, prc->top);
+        }
+        return 0;
+    }
+
     case WM_NCHITTEST:
         return DefWindowProcW(hWnd, msg, wParam, lParam);
 
@@ -200,11 +240,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     // 4. Load Config
     auto& cfg = AppConfig::Instance();
 
-    // Check if configuration needs initial resolution-based defaults:
-    // If running with legacy 1080p defaults on a high-DPI display, adapt automatically
-    if (cfg.main_window_width == 173 && cfg.main_window_height == 340 &&
-        (cfg.font_scale >= 0.99f && cfg.font_scale <= 1.01f) && screen_w > 2000) {
-        cfg.ResetToResolutionDefaults(screen_w, screen_h);
+    // Safe one-time migration from legacy unversioned configs (v1.0.0)
+    // Never guess values on subsequent runs once versioned
+    if (cfg.NeedsMigration()) {
+        if (screen_w > 2000 && cfg.main_window_width <= 175) {
+            cfg.ResetToResolutionDefaults(screen_w, screen_h);
+        }
+        cfg.MarkMigrated();
         cfg.Save();
     }
 
@@ -296,6 +338,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     // Theme styling
     ImGui::StyleColorsDark();
     ImGuiStyle& style = ImGui::GetStyle();
+    UINT initial_dpi = GetWindowDPI(hwnd);
+    style.FontScaleDpi = (float)initial_dpi / 96.0f;
     style.WindowBorderSize = 1.0f;
     style.FrameBorderSize = 0.0f;
     style.WindowRounding = 6.0f;
