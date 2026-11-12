@@ -4,6 +4,7 @@
 #include <cassert>
 #include <string>
 #include <vector>
+#include <fstream>
 
 #include "config.h"
 #include "map_detector.h"
@@ -25,9 +26,11 @@ void TestConfig() {
     TEST_ASSERT(!cfg.current_language.empty(), "Language should not be empty");
     TEST_ASSERT(cfg.time_alert_seconds == 30, "Time alert seconds should default to 30");
     TEST_ASSERT(cfg.artifact_positions.size() == 6, "There should be 6 artifact map positions configured");
-    TEST_ASSERT(cfg.main_window_width == 173, "main_window_width should default to 173");
-    TEST_ASSERT(cfg.main_window_height == 340, "main_window_height should default to 340");
-    TEST_ASSERT(cfg.table_height == 228, "table_height should default to 228");
+    TEST_ASSERT(cfg.main_window_width == 180, "main_window_width should default to 180");
+    TEST_ASSERT(cfg.main_window_height == 350, "main_window_height should default to 350");
+    TEST_ASSERT(cfg.table_height == 235, "table_height should default to 235");
+    TEST_ASSERT(cfg.config_version == 2, "config_version should default to 2");
+    TEST_ASSERT(cfg.NeedsMigration() == false, "Default config should not need migration");
     TEST_ASSERT(std::abs(cfg.toast_position_y - 0.18f) < 0.01f, "toast_position_y should default to 0.18");
     TEST_ASSERT(std::abs(cfg.toast_scale - 1.43f) < 0.01f, "toast_scale should default to 1.43");
     TEST_ASSERT(cfg.toast_text_color.size() == 3, "toast_text_color should have 3 components");
@@ -41,11 +44,29 @@ void TestConfig() {
     AppConfig test_cfg;
     bool loaded = test_cfg.Load("test_config.json");
     TEST_ASSERT(loaded, "Config should load successfully from test_config.json");
+    TEST_ASSERT(test_cfg.config_version == 2, "Reloaded config_version should be 2");
+    TEST_ASSERT(test_cfg.NeedsMigration() == false, "Reloaded config should not need migration");
     TEST_ASSERT(test_cfg.current_region == cfg.current_region, "Reloaded region should match");
     TEST_ASSERT(test_cfg.toast_when_hidden == true, "Reloaded toast_when_hidden should match true");
     TEST_ASSERT(test_cfg.toast_text_color.size() == 3, "Reloaded toast_text_color should have 3 components");
     TEST_ASSERT(test_cfg.toast_border_color.size() == 3, "Reloaded toast_border_color should have 3 components");
     remove("test_config.json");
+
+    // Test legacy migration without config_version
+    {
+        std::ofstream legacy_out("legacy_config.json");
+        legacy_out << "{\"main_window_width\": 173, \"main_window_height\": 340}\n";
+        legacy_out.close();
+
+        AppConfig legacy_cfg;
+        TEST_ASSERT(legacy_cfg.Load("legacy_config.json"), "Legacy config should load");
+        TEST_ASSERT(legacy_cfg.config_version == 0, "Unversioned legacy config should have config_version 0");
+        TEST_ASSERT(legacy_cfg.NeedsMigration() == true, "Legacy config must require migration");
+        legacy_cfg.MarkMigrated();
+        TEST_ASSERT(legacy_cfg.config_version == 2, "Migrated config should be version 2");
+        TEST_ASSERT(legacy_cfg.NeedsMigration() == false, "Migrated config should not need migration");
+        remove("legacy_config.json");
+    }
 
     // Test Resolution Defaults
     {
