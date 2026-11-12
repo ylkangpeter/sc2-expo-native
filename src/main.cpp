@@ -6,6 +6,7 @@
 #include <tchar.h>
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 
 #include "imgui.h"
 #include "imgui_impl_win32.h"
@@ -93,8 +94,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             auto& cfg = AppConfig::Instance();
             cfg.main_window_x = prc->left;
             cfg.main_window_y = prc->top;
-            cfg.main_window_width = prc->right - prc->left;
-            cfg.main_window_height = prc->bottom - prc->top;
+            // Keep the configured base HUD dimensions intact. The suggested
+            // rectangle is the complete native window and may include the
+            // commander panel or the unlocked drag area.
             cfg.Save();
             LockWindow::Instance().UpdatePosition(prc->left, prc->top);
         }
@@ -243,8 +245,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     // Safe one-time migration from legacy unversioned configs (v1.0.0)
     // Never guess values on subsequent runs once versioned
     if (cfg.NeedsMigration()) {
-        if (screen_w > 2000 && cfg.main_window_width <= 175) {
-            cfg.ResetToResolutionDefaults(screen_w, screen_h);
+        const bool legacy_defaults =
+            cfg.main_window_width == 173 &&
+            cfg.main_window_height == 340 &&
+            cfg.table_height == 228 &&
+            std::abs(cfg.font_scale - 1.0f) < 0.01f;
+        if (screen_w > 2000 && legacy_defaults) {
+            int def_mw, def_mh, def_th, def_sw, def_sh;
+            float def_fs, def_ts;
+            AppConfig::GetResolutionDefaults(screen_w, screen_h, def_mw, def_mh, def_th, def_fs, def_ts, def_sw, def_sh);
+            cfg.main_window_width = def_mw;
+            cfg.main_window_height = def_mh;
+            cfg.table_height = def_th;
+            cfg.toast_scale = def_ts;
         }
         cfg.MarkMigrated();
         cfg.Save();

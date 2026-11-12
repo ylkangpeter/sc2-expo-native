@@ -417,6 +417,7 @@ void SettingsWindow::RenderUI(float delta_time) {
         DrawItemWithLabel("字体大小", [&](const char* id) {
             if (ImGui::SliderFloat(id, &cfg.font_scale, 0.8f, 2.8f, "%.1f x")) {
                 cfg.font_scale = std::round(cfg.font_scale * 10.0f) / 10.0f;
+                m_need_update_dimensions = true;
             }
         });
 
