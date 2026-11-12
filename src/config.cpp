@@ -1,8 +1,56 @@
 #include "config.h"
 #include <fstream>
 #include <iostream>
+#include <cmath>
+#include <algorithm>
 
 using json = nlohmann::json;
+
+void AppConfig::GetResolutionDefaults(int screen_w, int screen_h,
+                                      int& out_main_w, int& out_main_h, int& out_table_h,
+                                      float& out_font_scale, float& out_toast_scale,
+                                      int& out_setting_w, int& out_setting_h) {
+    if (screen_w <= 0) screen_w = 1920;
+    if (screen_h <= 0) screen_h = 1080;
+
+    // Handle ultrawide (21:9, 32:9) screens so horizontal resolution does not inflate UI scale
+    int effective_w = screen_w;
+    if (screen_h > 0 && screen_w > (screen_h * 16 / 9) * 1.15f) {
+        effective_w = (screen_h * 16) / 9;
+    }
+
+    float scale = (float)effective_w / 1920.0f;
+    if (scale < 0.75f) scale = 0.75f;
+
+    // Main HUD dimensions
+    out_main_w = (int)std::round(180.0f * scale);
+    out_main_h = (int)std::round(350.0f * scale);
+    out_table_h = (int)std::round(235.0f * scale);
+
+    // Font and Toast scales (rounded to 1 decimal place)
+    out_font_scale = std::round(scale * 10.0f) / 10.0f;
+    out_toast_scale = std::round(1.4f * scale * 10.0f) / 10.0f;
+
+    // Settings window dimensions
+    out_setting_w = std::max(380, (int)std::round(380.0f * scale));
+    out_setting_h = std::max(600, (int)std::round(600.0f * scale));
+    if (screen_h > 0 && out_setting_h > (int)(screen_h * 0.9f)) {
+        out_setting_h = (int)(screen_h * 0.9f);
+    }
+}
+
+void AppConfig::ResetToResolutionDefaults(int screen_w, int screen_h) {
+    int dummy_sw, dummy_sh;
+    GetResolutionDefaults(screen_w, screen_h,
+                          main_window_width, main_window_height, table_height,
+                          font_scale, toast_scale, dummy_sw, dummy_sh);
+    toast_allowed = true;
+    toast_when_hidden = false;
+    toast_position_y = 0.18f;
+    toast_duration_ms = 8000;
+    toast_text_color = { 0.0f, 0.86f, 1.0f };
+    toast_border_color = { 0.0f, 0.75f, 1.0f };
+}
 
 AppConfig& AppConfig::Instance() {
     static AppConfig cfg;

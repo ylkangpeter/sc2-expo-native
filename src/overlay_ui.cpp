@@ -74,15 +74,16 @@ void OverlayUI::UpdateWindowDimensions() {
     if (!m_hwnd) return;
     const auto& cfg = AppConfig::Instance();
 
-    int base_w = cfg.main_window_width > 120 ? cfg.main_window_width : 173;
-    int base_h = cfg.main_window_height > 120 ? cfg.main_window_height : 340;
+    int base_w = cfg.main_window_width > 120 ? cfg.main_window_width : 180;
+    int base_h = cfg.main_window_height > 120 ? cfg.main_window_height : 350;
 
+    int extra_h = (int)std::round(36.0f * (cfg.font_scale > 0.5f ? cfg.font_scale : 1.0f));
     int target_w = base_w;
-    int target_h = m_locked ? base_h : (base_h + 32);
+    int target_h = m_locked ? base_h : (base_h + extra_h);
 
     if (m_show_commander_selector) {
-        target_w = 920;
-        target_h = std::max(target_h, 340);
+        target_w = base_w + 685;
+        target_h = std::max(target_h, 350);
     }
 
     SetWindowPos(m_hwnd, HWND_TOPMOST, 0, 0, target_w, target_h,
@@ -272,8 +273,12 @@ void OverlayUI::RenderMainHUD(float delta_time) {
     Sc2GameState state = Sc2Client::Instance().GetState();
     ImGuiIO& io = ImGui::GetIO();
 
-    int hud_w = cfg.main_window_width > 120 ? cfg.main_window_width : 173;
-    int hud_h = m_locked ? cfg.main_window_height : (cfg.main_window_height + 32);
+    float font_scale = cfg.font_scale > 0.5f ? cfg.font_scale : 1.0f;
+    ImGui::GetStyle().FontScaleMain = font_scale;
+
+    int extra_h = (int)std::round(36.0f * font_scale);
+    int hud_w = cfg.main_window_width > 120 ? cfg.main_window_width : 180;
+    int hud_h = m_locked ? cfg.main_window_height : (cfg.main_window_height + extra_h);
 
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(ImVec2((float)hud_w, (float)hud_h));
@@ -290,9 +295,6 @@ void OverlayUI::RenderMainHUD(float delta_time) {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(5.0f, 5.0f));
 
     if (ImGui::Begin("MainHUD", nullptr, flags)) {
-        float base_scale = cfg.font_scale > 0.5f ? cfg.font_scale : 1.0f;
-        ImGui::SetWindowFontScale(base_scale);
-
         // Drag window by clicking and dragging on the background when unlocked
         if (!m_locked && ImGui::IsWindowHovered() && ImGui::IsMouseDragging(0) && !ImGui::IsAnyItemActive()) {
             ReleaseCapture();
@@ -313,9 +315,7 @@ void OverlayUI::RenderMainHUD(float delta_time) {
         // Draw the time text over the invisible button
         ImGui::SetCursorScreenPos(ImVec2(time_start_pos.x + 2.0f, time_start_pos.y));
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 1.0f, 0.5f, 1.0f));
-        ImGui::SetWindowFontScale(base_scale * 1.15f);
         ImGui::Text(" Time: %s", time_str.c_str());
-        ImGui::SetWindowFontScale(base_scale);
         ImGui::PopStyleColor();
 
         if (!m_locked && (row_hovered || ImGui::IsItemHovered())) {
@@ -331,36 +331,41 @@ void OverlayUI::RenderMainHUD(float delta_time) {
         MapVariant var;
         bool has_variant = ScheduleManager::Instance().GetVariant(m_current_map, var);
 
-        ImGui::SetNextItemWidth(has_variant ? 104.0f : 163.0f);
-        if (ImGui::BeginCombo("##MapCombo", m_current_map.c_str())) {
-            for (const auto& m : maps) {
-                bool is_selected = (m == m_current_map);
-                if (ImGui::Selectable(m.c_str(), is_selected)) {
-                    m_current_map = m;
-                    Sc2Client::Instance().SetManualMap(m);
-                    m_last_active_row = -1;
-                    m_last_toast_seconds = -1;
-                    m_last_toast_map = m_current_map;
-                    ToastWindow::Instance().HideGameToast();
-                    if (ArtifactViewer::Instance().IsVisible()) {
-                        if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
-                            ArtifactViewer::Instance().ShowMap(m_current_map);
-                        } else {
-                            ArtifactViewer::Instance().Hide();
+        float spacing = ImGui::GetStyle().ItemSpacing.x;
+        if (has_variant) {
+            float btn_w = std::max(26.0f * font_scale, avail_w * 0.14f);
+            float btn_h = ImGui::GetFrameHeight();
+            float combo_w = avail_w - (2.0f * btn_w + spacing) - spacing;
+            if (combo_w < 50.0f) combo_w = 50.0f;
+
+            ImGui::SetNextItemWidth(combo_w);
+            if (ImGui::BeginCombo("##MapCombo", m_current_map.c_str())) {
+                for (const auto& m : maps) {
+                    bool is_selected = (m == m_current_map);
+                    if (ImGui::Selectable(m.c_str(), is_selected)) {
+                        m_current_map = m;
+                        Sc2Client::Instance().SetManualMap(m);
+                        m_last_active_row = -1;
+                        m_last_toast_seconds = -1;
+                        m_last_toast_map = m_current_map;
+                        ToastWindow::Instance().HideGameToast();
+                        if (ArtifactViewer::Instance().IsVisible()) {
+                            if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
+                                ArtifactViewer::Instance().ShowMap(m_current_map);
+                            } else {
+                                ArtifactViewer::Instance().Hide();
+                            }
                         }
                     }
+                    if (is_selected) ImGui::SetItemDefaultFocus();
                 }
-                if (is_selected) ImGui::SetItemDefaultFocus();
+                ImGui::EndCombo();
             }
-            ImGui::EndCombo();
-        }
 
-        // Map variants buttons (A/B or 左/右)
-        if (has_variant) {
             ImGui::SameLine();
             bool is_opt1 = (var.current_suffix == var.opt1);
             if (is_opt1) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.6f, 0.9f, 0.9f));
-            if (ImGui::Button(var.opt1.c_str(), ImVec2(24, 20))) {
+            if (ImGui::Button(var.opt1.c_str(), ImVec2(btn_w, btn_h))) {
                 m_current_map = var.prefix + "-" + var.opt1;
                 Sc2Client::Instance().SetManualMap(m_current_map);
                 m_last_active_row = -1;
@@ -383,7 +388,7 @@ void OverlayUI::RenderMainHUD(float delta_time) {
             ImGui::SameLine();
             bool is_opt2 = (var.current_suffix == var.opt2);
             if (is_opt2) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.6f, 0.9f, 0.9f));
-            if (ImGui::Button(var.opt2.c_str(), ImVec2(24, 20))) {
+            if (ImGui::Button(var.opt2.c_str(), ImVec2(btn_w, btn_h))) {
                 m_current_map = var.prefix + "-" + var.opt2;
                 Sc2Client::Instance().SetManualMap(m_current_map);
                 m_last_active_row = -1;
@@ -402,9 +407,33 @@ void OverlayUI::RenderMainHUD(float delta_time) {
                 ImGui::SetTooltip("切换到变种 %s (快捷键: Ctrl+Shift+[ 或 Ctrl+[)", var.opt2.c_str());
             }
             if (is_opt2) ImGui::PopStyleColor();
+        } else {
+            ImGui::SetNextItemWidth(avail_w);
+            if (ImGui::BeginCombo("##MapCombo", m_current_map.c_str())) {
+                for (const auto& m : maps) {
+                    bool is_selected = (m == m_current_map);
+                    if (ImGui::Selectable(m.c_str(), is_selected)) {
+                        m_current_map = m;
+                        Sc2Client::Instance().SetManualMap(m);
+                        m_last_active_row = -1;
+                        m_last_toast_seconds = -1;
+                        m_last_toast_map = m_current_map;
+                        ToastWindow::Instance().HideGameToast();
+                        if (ArtifactViewer::Instance().IsVisible()) {
+                            if (ArtifactViewer::Instance().HasArtifact(m_current_map)) {
+                                ArtifactViewer::Instance().ShowMap(m_current_map);
+                            } else {
+                                ArtifactViewer::Instance().Hide();
+                            }
+                        }
+                    }
+                    if (is_selected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
         }
 
-        // --- Row 4: Wave Schedule Table ---
+        // --- Row 3: Wave Schedule Table ---
         const auto& schedule = ScheduleManager::Instance().GetSchedule(m_current_map);
 
         // Find upcoming event
@@ -425,12 +454,14 @@ void OverlayUI::RenderMainHUD(float delta_time) {
         // Auto trigger toast within threshold (ONLY during active in-game match)
         CheckWaveToastAlert(state);
 
-        // --- Row 5: Schedule Table (Fixed, stable height) ---
+        // --- Row 4: Schedule Table (relative 100% width, dynamic columns based on font) ---
         float table_h = (float)cfg.table_height;
-        if (ImGui::BeginTable("ScheduleTable", 3, ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg, ImVec2(163, table_h))) {
-            ImGui::TableSetupColumn("时间", ImGuiTableColumnFlags_WidthFixed, 36.0f);
+        if (ImGui::BeginTable("ScheduleTable", 3, ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg, ImVec2(avail_w, table_h))) {
+            float time_col_w = ImGui::CalcTextSize("00:00").x + ImGui::GetStyle().CellPadding.x * 2.0f + 6.0f;
+            float tier_col_w = ImGui::CalcTextSize("阶数").x + ImGui::GetStyle().CellPadding.x * 2.0f + 6.0f;
+            ImGui::TableSetupColumn("时间", ImGuiTableColumnFlags_WidthFixed, time_col_w);
             ImGui::TableSetupColumn("波次/事件", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("阶数", ImGuiTableColumnFlags_WidthFixed, 28.0f);
+            ImGui::TableSetupColumn("阶数", ImGuiTableColumnFlags_WidthFixed, tier_col_w);
             ImGui::TableHeadersRow();
 
             for (int i = 0; i < (int)schedule.size(); ++i) {
@@ -477,37 +508,47 @@ void OverlayUI::RenderMainHUD(float delta_time) {
             ImGui::EndTable();
         }
 
-        // --- Row 6: Mutator Icons (Compact bottom layout) ---
+        // --- Row 5: Mutator Icons (Distributed proportionally across avail_w) ---
         ImGui::Spacing();
         const auto& mutator_types = MutatorManager::Instance().GetTypes();
-        for (const auto& mt : mutator_types) {
-            bool enabled = MutatorManager::Instance().IsMutatorEnabled(mt);
-            std::string icon_path = "ico/mutator/" + mt + ".png";
-            TextureData td = TextureLoader::Instance().LoadTexture(icon_path);
+        int m_count = (int)mutator_types.size();
+        if (m_count > 0) {
+            float icon_cell_w = (avail_w - (m_count - 1) * spacing) / (float)m_count;
+            float icon_size = std::clamp(icon_cell_w, 18.0f, 30.0f * font_scale);
+            for (int mi = 0; mi < m_count; ++mi) {
+                const auto& mt = mutator_types[mi];
+                bool enabled = MutatorManager::Instance().IsMutatorEnabled(mt);
+                std::string icon_path = "ico/mutator/" + mt + ".png";
+                TextureData td = TextureLoader::Instance().LoadTexture(icon_path);
 
-            ImVec4 tint = enabled ? ImVec4(1, 1, 1, 1) : ImVec4(0.35f, 0.35f, 0.35f, 0.4f);
-            if (td.srv) {
-                if (ImGui::ImageButton(mt.c_str(), (ImTextureID)td.srv, ImVec2(20, 20), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), tint)) {
-                    if (!m_locked) {
-                        MutatorManager::Instance().ToggleMutator(mt);
+                ImVec4 tint = enabled ? ImVec4(1, 1, 1, 1) : ImVec4(0.35f, 0.35f, 0.35f, 0.4f);
+                if (td.srv) {
+                    if (ImGui::ImageButton(mt.c_str(), (ImTextureID)td.srv, ImVec2(icon_size, icon_size), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), tint)) {
+                        if (!m_locked) {
+                            MutatorManager::Instance().ToggleMutator(mt);
+                        }
+                    }
+                } else {
+                    if (ImGui::Button(mt.substr(0, 3).c_str(), ImVec2(icon_size, icon_size))) {
+                        if (!m_locked) MutatorManager::Instance().ToggleMutator(mt);
                     }
                 }
-            } else {
-                if (ImGui::Button(mt.substr(0, 3).c_str(), ImVec2(20, 20))) {
-                    if (!m_locked) MutatorManager::Instance().ToggleMutator(mt);
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s (点击%s)", mt.c_str(), enabled ? "关闭" : "开启");
+                }
+                if (mi < m_count - 1) {
+                    ImGui::SameLine();
                 }
             }
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("%s (点击%s)", mt.c_str(), enabled ? "关闭" : "开启");
-            }
-            ImGui::SameLine();
         }
 
-
-        // --- Row 7: Action Buttons (Expand Commander / Artifact) ---
+        // --- Row 6: Action Buttons (Expand Commander / Artifact) ---
         if (!m_locked) {
-            ImGui::NewLine();
-            if (ImGui::Button(m_show_commander_selector ? "收起" : "替换指挥官", ImVec2(80, 22))) {
+            ImGui::Spacing();
+            float btn_w = (avail_w - spacing) * 0.5f;
+            float btn_h = ImGui::GetFrameHeight();
+
+            if (ImGui::Button(m_show_commander_selector ? "收起" : "替换指挥官", ImVec2(btn_w, btn_h))) {
                 ToggleCommanderSelector();
             }
             ImGui::SameLine();
@@ -515,7 +556,7 @@ void OverlayUI::RenderMainHUD(float delta_time) {
             if (!has_art) {
                 ImGui::BeginDisabled(true);
             }
-            if (ImGui::Button("神器点位", ImVec2(75, 22))) {
+            if (ImGui::Button("神器点位", ImVec2(avail_w - btn_w - spacing, btn_h))) {
                 if (has_art) {
                     ToggleArtifact();
                 }
@@ -532,8 +573,6 @@ void OverlayUI::RenderMainHUD(float delta_time) {
                 ImGui::EndDisabled();
             }
         }
-
-        ImGui::SetWindowFontScale(1.0f);
     }
     ImGui::End();
 
@@ -543,10 +582,13 @@ void OverlayUI::RenderMainHUD(float delta_time) {
 
 void OverlayUI::RenderCommanderSelector(float delta_time) {
     ImGuiIO& io = ImGui::GetIO();
+    auto& cfg = AppConfig::Instance();
 
-    // Side panel to the right of HUD: width ~685px
-    ImGui::SetNextWindowPos(ImVec2(252.0f, 0));
-    ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x - 252.0f, io.DisplaySize.y));
+    // Side panel to the right of HUD: dynamic offset based on main HUD width
+    float hud_w = (float)(cfg.main_window_width > 120 ? cfg.main_window_width : 180);
+    float side_panel_x = hud_w + 10.0f;
+    ImGui::SetNextWindowPos(ImVec2(side_panel_x, 0));
+    ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x - side_panel_x, io.DisplaySize.y));
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
