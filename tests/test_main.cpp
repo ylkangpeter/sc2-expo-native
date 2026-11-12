@@ -85,7 +85,8 @@ void TestConfig() {
         AppConfig::GetResolutionDefaults(2560, 1440, mw, mh, th, fs, ts, sw, sh);
         TEST_ASSERT(mw > 230 && mw < 250, "2K main window width should scale with width ratio");
         TEST_ASSERT(mh > 450 && mh < 480, "2K main window height should scale");
-        TEST_ASSERT(fs >= 1.3f, "2K font scale should be >= 1.3");
+        TEST_ASSERT(std::abs(fs - 1.0f) < 0.05f, "2K user font scale baseline should be 1.0f");
+        TEST_ASSERT(ts >= 1.7f, "2K toast scale should scale");
         TEST_ASSERT(sw > 490, "2K setting width should be > 490");
         TEST_ASSERT(sh > 750, "2K setting height should be > 750");
 
@@ -93,7 +94,8 @@ void TestConfig() {
         AppConfig::GetResolutionDefaults(3840, 2160, mw, mh, th, fs, ts, sw, sh);
         TEST_ASSERT(mw == 360, "4K main window width should be 360");
         TEST_ASSERT(mh == 700, "4K main window height should be 700");
-        TEST_ASSERT(std::abs(fs - 2.0f) < 0.05f, "4K font scale should be 2.0");
+        TEST_ASSERT(std::abs(fs - 1.0f) < 0.05f, "4K user font scale baseline should be 1.0f");
+        TEST_ASSERT(std::abs(ts - 2.8f) < 0.05f, "4K toast scale should be 2.8");
         TEST_ASSERT(sw == 760, "4K setting width should be 760");
         TEST_ASSERT(sh == 1200, "4K setting height should be 1200");
 

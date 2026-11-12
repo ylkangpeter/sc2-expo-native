@@ -84,7 +84,12 @@ void OverlayUI::UpdateWindowDimensions() {
 
     if (m_show_commander_selector) {
         float avatar_size = std::clamp(std::round(56.0f * font_scale), 48.0f, 96.0f);
-        int panel_w = (int)std::round(9.0f * (avatar_size + 8.0f) + 40.0f);
+        const auto& avatar_grid = CommanderManager::Instance().GetAvatarGrid();
+        size_t max_columns = 0;
+        for (const auto& row : avatar_grid) {
+            max_columns = std::max(max_columns, row.size());
+        }
+        int panel_w = (int)std::round((float)max_columns * (avatar_size + 8.0f) + 40.0f);
         target_w = base_w + std::max(685, panel_w);
         target_h = std::max(target_h, (int)std::round(380.0f * font_scale));
     }

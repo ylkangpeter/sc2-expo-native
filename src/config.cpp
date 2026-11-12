@@ -27,8 +27,9 @@ void AppConfig::GetResolutionDefaults(int screen_w, int screen_h,
     out_main_h = (int)std::round(350.0f * scale);
     out_table_h = (int)std::round(235.0f * scale);
 
-    // Font and Toast scales (rounded to 1 decimal place)
-    out_font_scale = std::round(scale * 10.0f) / 10.0f;
+    // Font and Toast scales
+    // User font preference baseline remains 1.0x; physical High-DPI scaling is handled by ImGui's FontScaleDpi
+    out_font_scale = 1.0f;
     out_toast_scale = std::round(1.4f * scale * 10.0f) / 10.0f;
 
     // Settings window dimensions
