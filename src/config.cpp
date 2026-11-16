@@ -46,12 +46,26 @@ void AppConfig::ResetToResolutionDefaults(int screen_w, int screen_h) {
                           main_window_width, main_window_height, table_height,
                           font_scale, toast_scale, dummy_sw, dummy_sh);
     config_version = 2;
+    map_shortcut = "ctrl + shift + [";
+    lock_shortcut = "ctrl + shift + ]";
+    screenshot_shortcut = "ctrl + shift + -";
+    show_artifact_shortcut = "ctrl + shift + \\";
+    table_font_size = 13;
     toast_allowed = true;
     toast_when_hidden = false;
     toast_position_y = 0.18f;
     toast_duration_ms = 8000;
+    toast_show_border = true;
+    toast_opacity = 1.0f;
     toast_text_color = { 0.0f, 0.86f, 1.0f };
     toast_border_color = { 0.0f, 0.75f, 1.0f };
+    time_alert_seconds = 30;
+    mutator_alert_seconds = 30;
+    mutator_duration_seconds = 5;
+    mutator_toast_position_y = 0.70f;
+    artifact_scale_ratio = 0.70f;
+    artifact_opacity = 0.65f;
+    InitDefaultArtifactPositions();
 }
 
 AppConfig& AppConfig::Instance() {
@@ -59,13 +73,6 @@ AppConfig& AppConfig::Instance() {
     static bool initialized = false;
     if (!initialized) {
         initialized = true;
-        // Default artifact positions
-        cfg.artifact_positions["死亡摇篮"] = { 600.0f / 1174.0f, 483.0f / 876.0f, 40, 40 };
-        cfg.artifact_positions["湮灭快车"] = { 830.0f / 1987.0f, 1050.0f / 1353.0f, 40, 40 };
-        cfg.artifact_positions["净网行动"] = { 398.0f / 1496.0f, 688.0f / 996.0f, 40, 40 };
-        cfg.artifact_positions["营救矿工"] = { 1080.0f / 1755.0f, 391.0f / 844.0f, 40, 40 };
-        cfg.artifact_positions["亡者之夜"] = { 468.0f / 1242.0f, 495.0f / 938.0f, 40, 40 };
-        cfg.artifact_positions["熔火危机"] = { 730.0f / 1783.0f, 1200.0f / 1334.0f, 40, 40 };
         cfg.Load();
     }
     return cfg;
@@ -84,11 +91,16 @@ bool AppConfig::Load(const std::string& path) {
         else config_version = 0; // Legacy v1.0.0 unversioned config
         if (j.contains("debug_mode")) debug_mode = j["debug_mode"].get<bool>();
         if (j.contains("debug_time_factor")) debug_time_factor = j["debug_time_factor"].get<float>();
+        if (j.contains("map_shortcut")) map_shortcut = j["map_shortcut"].get<std::string>();
+        if (j.contains("lock_shortcut")) lock_shortcut = j["lock_shortcut"].get<std::string>();
+        if (j.contains("screenshot_shortcut")) screenshot_shortcut = j["screenshot_shortcut"].get<std::string>();
+        if (j.contains("show_artifact_shortcut")) show_artifact_shortcut = j["show_artifact_shortcut"].get<std::string>();
         if (j.contains("main_window_x")) main_window_x = j["main_window_x"].get<int>();
         if (j.contains("main_window_y")) main_window_y = j["main_window_y"].get<int>();
         if (j.contains("main_window_width")) main_window_width = j["main_window_width"].get<int>();
         if (j.contains("main_window_height")) main_window_height = j["main_window_height"].get<int>();
         if (j.contains("table_height")) table_height = j["table_height"].get<int>();
+        if (j.contains("table_font_size")) table_font_size = j["table_font_size"].get<int>();
         if (j.contains("font_scale")) font_scale = j["font_scale"].get<float>();
         if (j.contains("time_alert_seconds")) time_alert_seconds = j["time_alert_seconds"].get<int>();
         if (j.contains("toast_allowed")) toast_allowed = j["toast_allowed"].get<bool>();
@@ -96,14 +108,65 @@ bool AppConfig::Load(const std::string& path) {
         if (j.contains("toast_position_y")) toast_position_y = j["toast_position_y"].get<float>();
         if (j.contains("toast_scale")) toast_scale = j["toast_scale"].get<float>();
         if (j.contains("toast_duration_ms")) toast_duration_ms = j["toast_duration_ms"].get<int>();
+        if (j.contains("toast_show_border")) toast_show_border = j["toast_show_border"].get<bool>();
+        if (j.contains("toast_opacity")) {
+            float val = j["toast_opacity"].get<float>();
+            if (!std::isfinite(val)) val = 1.0f;
+            toast_opacity = std::clamp(val, 0.1f, 1.0f);
+        }
         if (j.contains("toast_text_color") && j["toast_text_color"].is_array() && j["toast_text_color"].size() >= 3) {
             toast_text_color = j["toast_text_color"].get<std::vector<float>>();
         }
         if (j.contains("toast_border_color") && j["toast_border_color"].is_array() && j["toast_border_color"].size() >= 3) {
             toast_border_color = j["toast_border_color"].get<std::vector<float>>();
         }
+        if (j.contains("mutator_alert_seconds")) mutator_alert_seconds = j["mutator_alert_seconds"].get<int>();
+        if (j.contains("mutator_duration_seconds")) mutator_duration_seconds = j["mutator_duration_seconds"].get<int>();
+        if (j.contains("mutator_toast_position_y")) mutator_toast_position_y = j["mutator_toast_position_y"].get<float>();
+        if (j.contains("artifact_scale_ratio")) {
+            float val = j["artifact_scale_ratio"].get<float>();
+            if (std::isnan(val) || val < 0.1f) {
+                artifact_scale_ratio = 0.1f;
+            } else if (val > 3.0f) {
+                artifact_scale_ratio = 3.0f;
+            } else {
+                artifact_scale_ratio = val;
+            }
+        }
+        if (j.contains("artifact_opacity")) {
+            float val = j["artifact_opacity"].get<float>();
+            if (std::isnan(val) || val < 0.1f) {
+                artifact_opacity = 0.1f;
+            } else if (val > 1.0f) {
+                artifact_opacity = 1.0f;
+            } else {
+                artifact_opacity = val;
+            }
+        }
         if (j.contains("blacklist") && j["blacklist"].is_array()) {
             blacklist = j["blacklist"].get<std::vector<std::string>>();
+        }
+        if (j.contains("artifact_positions") && j["artifact_positions"].is_object()) {
+            for (auto& [k, v] : j["artifact_positions"].items()) {
+                ArtifactPos pos;
+                try {
+                    if (!v.is_object()) continue;
+                    if (v.contains("x_ratio")) pos.x_ratio = v["x_ratio"].get<float>();
+                    if (v.contains("y_ratio")) pos.y_ratio = v["y_ratio"].get<float>();
+                    if (v.contains("width")) pos.width = v["width"].get<int>();
+                    if (v.contains("height")) pos.height = v["height"].get<int>();
+                } catch (...) {
+                    // Ignore malformed individual markers and retain defaults.
+                    continue;
+                }
+                if (!std::isfinite(pos.x_ratio)) pos.x_ratio = 0.0f;
+                if (!std::isfinite(pos.y_ratio)) pos.y_ratio = 0.0f;
+                pos.x_ratio = std::clamp(pos.x_ratio, 0.0f, 1.0f);
+                pos.y_ratio = std::clamp(pos.y_ratio, 0.0f, 1.0f);
+                pos.width = std::clamp(pos.width, 1, 512);
+                pos.height = std::clamp(pos.height, 1, 512);
+                artifact_positions[k] = pos;
+            }
         }
         return true;
     } catch (const std::exception& e) {
@@ -120,11 +183,16 @@ bool AppConfig::Save(const std::string& path) const {
         j["current_language"] = current_language;
         j["debug_mode"] = debug_mode;
         j["debug_time_factor"] = debug_time_factor;
+        j["map_shortcut"] = map_shortcut;
+        j["lock_shortcut"] = lock_shortcut;
+        j["screenshot_shortcut"] = screenshot_shortcut;
+        j["show_artifact_shortcut"] = show_artifact_shortcut;
         j["main_window_x"] = main_window_x;
         j["main_window_y"] = main_window_y;
         j["main_window_width"] = main_window_width;
         j["main_window_height"] = main_window_height;
         j["table_height"] = table_height;
+        j["table_font_size"] = table_font_size;
         j["font_scale"] = font_scale;
         j["time_alert_seconds"] = time_alert_seconds;
         j["toast_allowed"] = toast_allowed;
@@ -132,9 +200,27 @@ bool AppConfig::Save(const std::string& path) const {
         j["toast_position_y"] = toast_position_y;
         j["toast_scale"] = toast_scale;
         j["toast_duration_ms"] = toast_duration_ms;
+        j["toast_show_border"] = toast_show_border;
+        j["toast_opacity"] = toast_opacity;
         j["toast_text_color"] = toast_text_color;
         j["toast_border_color"] = toast_border_color;
+        j["mutator_alert_seconds"] = mutator_alert_seconds;
+        j["mutator_duration_seconds"] = mutator_duration_seconds;
+        j["mutator_toast_position_y"] = mutator_toast_position_y;
+        j["artifact_scale_ratio"] = artifact_scale_ratio;
+        j["artifact_opacity"] = artifact_opacity;
         j["blacklist"] = blacklist;
+
+        json j_art = json::object();
+        for (const auto& [k, v] : artifact_positions) {
+            j_art[k] = {
+                { "x_ratio", v.x_ratio },
+                { "y_ratio", v.y_ratio },
+                { "width", v.width },
+                { "height", v.height }
+            };
+        }
+        j["artifact_positions"] = j_art;
 
         std::ofstream file(path);
         if (!file.is_open()) return false;

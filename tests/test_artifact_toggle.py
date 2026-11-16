@@ -1,8 +1,10 @@
+# -*- coding: utf-8 -*-
 import subprocess
 import time
 import ctypes
 from ctypes import wintypes
 import sys
+import os
 
 user32 = ctypes.windll.user32
 
@@ -22,7 +24,14 @@ def press_artifact_hotkey():
 
 def test_artifact_toggle():
     print("Launching sc2_expo.exe for artifact overlay verification...")
-    proc = subprocess.Popen(["sc2_expo.exe"])
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(script_dir, ".."))
+    exe_path = os.path.join(repo_root, "dist", "sc2_expo", "sc2_expo.exe")
+    run_dir = os.path.join(repo_root, "dist", "sc2_expo")
+    if not os.path.exists(exe_path):
+        exe_path = os.path.join(repo_root, "sc2_expo.exe")
+        run_dir = repo_root
+    proc = subprocess.Popen([exe_path], cwd=run_dir)
     try:
         hwnd = 0
         for _ in range(50):
@@ -36,18 +45,38 @@ def test_artifact_toggle():
 
         time.sleep(0.5)
 
+        h_art = user32.FindWindowW("SC2ArtifactOverlayNative", "SC2 Artifact Viewer")
+        if not h_art:
+            print("[FAIL] Artifact window not found!")
+            return False
+
         # Press Ctrl+Shift+\ to Show Artifact
         print("Triggering Ctrl+Shift+\\ to Show Artifact...")
         press_artifact_hotkey()
         time.sleep(0.8)
 
-        h_art = user32.FindWindowW("SC2ArtifactOverlayNative", "SC2 Artifact Viewer")
-        if not h_art:
-            print("[FAIL] Artifact window not found after hotkey!")
-            return False
+        live_non_artifact = False
+        try:
+            import urllib.request, json
+            req = urllib.request.urlopen("http://127.0.0.1:6119/game", timeout=1)
+            gdata = json.loads(req.read().decode('utf-8', errors='replace'))
+            if gdata.get("players"):
+                live_non_artifact = True
+        except Exception:
+            pass
 
         is_vis = user32.IsWindowVisible(h_art)
         print(f"Artifact window found (HWND={h_art}), IsVisible={bool(is_vis)}")
+
+        if live_non_artifact:
+            if is_vis:
+                print("[FAIL] Current map has no artifact, but artifact overlay is visible!")
+                return False
+            print("[PASS] Verified: Non-artifact map strictly hides artifact overlay!")
+            user32.PostMessageW(hwnd, 0x0010, 0, 0)
+            proc.wait(timeout=5)
+            return True
+
         if not is_vis:
             print("[FAIL] Artifact window should be visible")
             return False

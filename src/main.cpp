@@ -29,6 +29,8 @@
 #define ID_TRAY_ARTIFACT 2004
 #define ID_TRAY_COMMANDER 2005
 #define ID_TRAY_SETTINGS 2006
+#define WINDOW_POSITION_SAVE_TIMER 0x5343
+#define WINDOW_POSITION_SAVE_DELAY_MS 500
 
 static ID3D11Device*            g_pd3dDevice = nullptr;
 static ID3D11DeviceContext*     g_pd3dDeviceContext = nullptr;
@@ -37,6 +39,26 @@ static ID3D11RenderTargetView*  g_mainRenderTargetView = nullptr;
 static ID3D11BlendState*        g_pBlendState = nullptr;
 static NOTIFYICONDATAW          g_nid = {};
 static ImGuiContext*            g_mainImGuiContext = nullptr;
+static bool                     g_window_position_dirty = false;
+
+static bool UpdateWindowPositionInMemory(HWND hwnd) {
+    RECT rect;
+    if (!GetWindowRect(hwnd, &rect)) return false;
+
+    auto& cfg = AppConfig::Instance();
+    bool changed = cfg.main_window_x != rect.left || cfg.main_window_y != rect.top;
+    cfg.main_window_x = rect.left;
+    cfg.main_window_y = rect.top;
+    LockWindow::Instance().UpdatePosition(rect.left, rect.top);
+    return changed;
+}
+
+static void ScheduleWindowPositionSave(HWND hwnd) {
+    // Coalesce a burst of move/DPI messages into one delayed write.
+    // The final WM_DESTROY handler still saves the latest in-memory position.
+    g_window_position_dirty = true;
+    SetTimer(hwnd, WINDOW_POSITION_SAVE_TIMER, WINDOW_POSITION_SAVE_DELAY_MS, nullptr);
+}
 
 bool CreateDeviceD3D(HWND hWnd);
 void CleanupDeviceD3D();
@@ -85,20 +107,23 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
         RECT* prc = (RECT*)lParam;
         if (prc) {
+            auto& cfg = AppConfig::Instance();
+            bool changed = cfg.main_window_x != prc->left || cfg.main_window_y != prc->top;
             SetWindowPos(hWnd, nullptr,
                          prc->left, prc->top,
                          prc->right - prc->left,
                          prc->bottom - prc->top,
                          SWP_NOZORDER | SWP_NOACTIVATE);
 
-            auto& cfg = AppConfig::Instance();
             cfg.main_window_x = prc->left;
             cfg.main_window_y = prc->top;
             // Keep the configured base HUD dimensions intact. The suggested
             // rectangle is the complete native window and may include the
             // commander panel or the unlocked drag area.
-            cfg.Save();
             LockWindow::Instance().UpdatePosition(prc->left, prc->top);
+            if (changed && !OverlayUI::Instance().IsLocked()) {
+                ScheduleWindowPositionSave(hWnd);
+            }
         }
         return 0;
     }
@@ -106,18 +131,31 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_NCHITTEST:
         return DefWindowProcW(hWnd, msg, wParam, lParam);
 
-    case WM_MOVE:
-    case WM_EXITSIZEMOVE: {
-        RECT rect;
-        if (GetWindowRect(hWnd, &rect)) {
-            auto& cfg = AppConfig::Instance();
-            cfg.main_window_x = rect.left;
-            cfg.main_window_y = rect.top;
-            cfg.Save();
-            LockWindow::Instance().UpdatePosition(rect.left, rect.top);
+    case WM_MOVE: {
+        bool changed = UpdateWindowPositionInMemory(hWnd);
+        if (changed && !OverlayUI::Instance().IsLocked()) {
+            ScheduleWindowPositionSave(hWnd);
         }
         return 0;
     }
+
+    case WM_EXITSIZEMOVE: {
+        bool changed = UpdateWindowPositionInMemory(hWnd);
+        if (changed && !OverlayUI::Instance().IsLocked()) {
+            ScheduleWindowPositionSave(hWnd);
+        }
+        return 0;
+    }
+
+    case WM_TIMER:
+        if (wParam == WINDOW_POSITION_SAVE_TIMER) {
+            KillTimer(hWnd, WINDOW_POSITION_SAVE_TIMER);
+            if (g_window_position_dirty && AppConfig::Instance().Save()) {
+                g_window_position_dirty = false;
+            }
+            return 0;
+        }
+        return 0;
 
     case WM_HOTKEY:
         HotkeyManager::Instance().OnHotkey((int)wParam);
@@ -195,6 +233,11 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         return 0;
 
     case WM_DESTROY:
+        KillTimer(hWnd, WINDOW_POSITION_SAVE_TIMER);
+        if (g_window_position_dirty) {
+            AppConfig::Instance().Save();
+            g_window_position_dirty = false;
+        }
         PostQuitMessage(0);
         return 0;
     }
@@ -325,7 +368,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     ArtifactViewer::Instance().Init(hInstance);
     ToastWindow::Instance().Init(hInstance);
     MutatorAlertWindow::Instance().Init(hInstance);
-    HotkeyManager::Instance().RegisterAll(hwnd);
     OverlayUI::Instance().Init(g_pd3dDevice, hwnd);
     Sc2Client::Instance().Start();
 
@@ -339,6 +381,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     g_nid.hIcon = hAppIcon;
     wcscpy_s(g_nid.szTip, L"SC2 Expo Timer (Native)");
     Shell_NotifyIconW(NIM_ADD, &g_nid);
+
+    // 8.1 Register Global Hotkeys and report any conflicts
+    if (!HotkeyManager::Instance().RegisterAll(hwnd)) {
+        std::cerr << "Warning: One or more global hotkeys failed to register." << std::endl;
+        NOTIFYICONDATAW nid = g_nid;
+        nid.uFlags |= NIF_INFO;
+        nid.dwInfoFlags = NIIF_WARNING;
+        wcscpy_s(nid.szInfoTitle, L"SC2 Expo 快捷键提示");
+        wcscpy_s(nid.szInfo, L"部分全局热键已被占用或注册失败，请检查热键冲突。");
+        Shell_NotifyIconW(NIM_MODIFY, &nid);
+    }
 
     // 9. Setup ImGui context
     IMGUI_CHECKVERSION();

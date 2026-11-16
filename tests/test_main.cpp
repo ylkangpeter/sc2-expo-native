@@ -14,6 +14,8 @@
 #include "commander_manager.h"
 #include "texture_loader.h"
 #include "artifact_viewer.h"
+#include "sc2_client.h"
+#include "hotkeys.h"
 
 #include "test_assert.h"
 
@@ -36,9 +38,25 @@ void TestConfig() {
     TEST_ASSERT(cfg.toast_text_color.size() == 3, "toast_text_color should have 3 components");
     TEST_ASSERT(cfg.toast_border_color.size() == 3, "toast_border_color should have 3 components");
     TEST_ASSERT(cfg.toast_when_hidden == false, "toast_when_hidden should default to false");
+    TEST_ASSERT(cfg.toast_show_border == true, "toast_show_border should default to true");
+    TEST_ASSERT(std::abs(cfg.toast_opacity - 1.0f) < 0.01f, "toast_opacity should default to 1.0");
 
     // Test save & reload
     cfg.toast_when_hidden = true;
+    cfg.map_shortcut = "ctrl + alt + m";
+    cfg.lock_shortcut = "ctrl + alt + l";
+    cfg.screenshot_shortcut = "ctrl + alt + s";
+    cfg.show_artifact_shortcut = "ctrl + alt + a";
+    cfg.table_font_size = 16;
+    cfg.mutator_alert_seconds = 45;
+    cfg.mutator_duration_seconds = 8;
+    cfg.mutator_toast_position_y = 0.65f;
+    cfg.artifact_scale_ratio = 0.85f;
+    cfg.artifact_opacity = 0.75f;
+    cfg.toast_show_border = false;
+    cfg.toast_opacity = 0.65f;
+    cfg.artifact_positions["custom_test_map"] = { 0.42f, 0.58f, 45, 45 };
+
     cfg.Save("test_config.json");
     cfg.toast_when_hidden = false; // Reset
     AppConfig test_cfg;
@@ -50,6 +68,20 @@ void TestConfig() {
     TEST_ASSERT(test_cfg.toast_when_hidden == true, "Reloaded toast_when_hidden should match true");
     TEST_ASSERT(test_cfg.toast_text_color.size() == 3, "Reloaded toast_text_color should have 3 components");
     TEST_ASSERT(test_cfg.toast_border_color.size() == 3, "Reloaded toast_border_color should have 3 components");
+    TEST_ASSERT(test_cfg.toast_show_border == false, "Reloaded toast_show_border should match");
+    TEST_ASSERT(std::abs(test_cfg.toast_opacity - 0.65f) < 0.01f, "Reloaded toast_opacity should match");
+    TEST_ASSERT(test_cfg.map_shortcut == "ctrl + alt + m", "Reloaded map_shortcut should match");
+    TEST_ASSERT(test_cfg.lock_shortcut == "ctrl + alt + l", "Reloaded lock_shortcut should match");
+    TEST_ASSERT(test_cfg.screenshot_shortcut == "ctrl + alt + s", "Reloaded screenshot_shortcut should match");
+    TEST_ASSERT(test_cfg.show_artifact_shortcut == "ctrl + alt + a", "Reloaded show_artifact_shortcut should match");
+    TEST_ASSERT(test_cfg.table_font_size == 16, "Reloaded table_font_size should match");
+    TEST_ASSERT(test_cfg.mutator_alert_seconds == 45, "Reloaded mutator_alert_seconds should match");
+    TEST_ASSERT(test_cfg.mutator_duration_seconds == 8, "Reloaded mutator_duration_seconds should match");
+    TEST_ASSERT(std::abs(test_cfg.mutator_toast_position_y - 0.65f) < 0.01f, "Reloaded mutator_toast_position_y should match");
+    TEST_ASSERT(std::abs(test_cfg.artifact_scale_ratio - 0.85f) < 0.01f, "Reloaded artifact_scale_ratio should match");
+    TEST_ASSERT(std::abs(test_cfg.artifact_opacity - 0.75f) < 0.01f, "Reloaded artifact_opacity should match");
+    TEST_ASSERT(test_cfg.artifact_positions.find("custom_test_map") != test_cfg.artifact_positions.end(), "Reloaded custom artifact position should exist");
+    TEST_ASSERT(std::abs(test_cfg.artifact_positions["custom_test_map"].x_ratio - 0.42f) < 0.01f, "Reloaded artifact x_ratio match");
     remove("test_config.json");
 
     // Test legacy migration without config_version
@@ -102,6 +134,44 @@ void TestConfig() {
         // Ultrawide (3440x1440) should use 16:9 equivalent to avoid inflating
         AppConfig::GetResolutionDefaults(3440, 1440, mw, mh, th, fs, ts, sw, sh);
         TEST_ASSERT(mw > 230 && mw < 250, "Ultrawide 1440p should use 16:9 equivalent width ratio");
+    }
+
+    // Test artifact_scale_ratio range clamping on load
+    {
+        std::ofstream range_out("range_config.json");
+        range_out << "{\"artifact_scale_ratio\": -5.0, \"artifact_opacity\": 99.0}\n";
+        range_out.close();
+
+        AppConfig clamp_cfg;
+        TEST_ASSERT(clamp_cfg.Load("range_config.json"), "Range config should load");
+        TEST_ASSERT(std::abs(clamp_cfg.artifact_scale_ratio - 0.1f) < 0.001f, "Negative artifact_scale_ratio should clamp to 0.1f");
+        TEST_ASSERT(std::abs(clamp_cfg.artifact_opacity - 1.0f) < 0.001f, "Excessive artifact_opacity should clamp to 1.0f");
+        remove("range_config.json");
+
+        std::ofstream high_out("high_config.json");
+        high_out << "{\"artifact_scale_ratio\": 150.0, \"artifact_opacity\": -0.5}\n";
+        high_out.close();
+
+        TEST_ASSERT(clamp_cfg.Load("high_config.json"), "High config should load");
+        TEST_ASSERT(std::abs(clamp_cfg.artifact_scale_ratio - 3.0f) < 0.001f, "Excessive artifact_scale_ratio should clamp to 3.0f");
+        TEST_ASSERT(std::abs(clamp_cfg.artifact_opacity - 0.1f) < 0.001f, "Negative artifact_opacity should clamp to 0.1f");
+        remove("high_config.json");
+    }
+
+    // Test ResetToResolutionDefaults clears custom artifact positions
+    {
+        AppConfig reset_cfg;
+        reset_cfg.artifact_positions["custom_marker_1"] = { 0.1f, 0.2f, 30, 30 };
+        reset_cfg.artifact_positions["custom_marker_2"] = { 0.5f, 0.5f, 50, 50 };
+        TEST_ASSERT(reset_cfg.artifact_positions.find("custom_marker_1") != reset_cfg.artifact_positions.end(), "Custom marker should exist before reset");
+        TEST_ASSERT(reset_cfg.artifact_positions.size() == 8, "Should have 6 defaults + 2 custom = 8");
+
+        reset_cfg.ResetToResolutionDefaults(1920, 1080);
+        TEST_ASSERT(reset_cfg.artifact_positions.find("custom_marker_1") == reset_cfg.artifact_positions.end(), "Custom marker 1 should be cleared after reset");
+        TEST_ASSERT(reset_cfg.artifact_positions.find("custom_marker_2") == reset_cfg.artifact_positions.end(), "Custom marker 2 should be cleared after reset");
+        TEST_ASSERT(reset_cfg.artifact_positions.size() == 6, "Should only have 6 default positions after reset");
+        TEST_ASSERT(reset_cfg.artifact_positions.find("死亡摇篮") != reset_cfg.artifact_positions.end(), "Default position should exist");
+        TEST_ASSERT(reset_cfg.artifact_positions.find("熔火危机") != reset_cfg.artifact_positions.end(), "Default position should exist");
     }
 }
 
@@ -533,6 +603,57 @@ void TestArtifactViewer() {
     TEST_ASSERT(av.ResolveArtifactMap("死亡摇篮") == "死亡摇篮", "ResolveArtifactMap 死亡摇篮");
 }
 
+void TestSc2Client() {
+    std::cout << "Running TestSc2Client..." << std::endl;
+    Sc2Client& client = Sc2Client::Instance();
+
+    // 1. Process valid in-game JSON
+    std::string valid_game = R"({
+        "displayTime": 150.5,
+        "map": "往日神庙-A",
+        "players": [
+            {"id": 1, "name": "Player1", "type": "user", "race": "terran"},
+            {"id": 2, "name": "Player2", "type": "user", "race": "protoss"},
+            {"id": 6, "name": "神庙", "type": "computer", "race": "protoss"},
+            {"id": 8, "name": "岩石", "type": "computer", "race": "neutral"}
+        ]
+    })";
+    std::string valid_ui = R"({"activeScreens": []})"; // in_game
+
+    client.ProcessGameResponse(valid_game, valid_ui);
+    Sc2GameState st = client.GetState();
+    TEST_ASSERT(st.is_running == true, "State should be running for valid JSON");
+    TEST_ASSERT(st.screen_state == "in_game", "Screen state should be in_game");
+    TEST_ASSERT(st.current_seconds == 150, "Current seconds should be 150");
+    TEST_ASSERT(st.players.size() == 4, "Players size should be 4");
+
+    // 2. Process malformed / truncated JSON -> must reset state to unknown/not-running
+    std::string malformed_game = "{\"displayTime\": 200.0, \"map\": "; // truncated!
+    client.ProcessGameResponse(malformed_game, valid_ui);
+    st = client.GetState();
+    TEST_ASSERT(st.is_running == false, "State must be reset to not running on malformed JSON");
+    TEST_ASSERT(st.screen_state == "unknown", "Screen state must be reset to unknown on malformed JSON");
+    TEST_ASSERT(st.current_seconds == 0, "Current seconds must be reset to 0");
+    TEST_ASSERT(st.players.empty(), "Players must be cleared on malformed JSON");
+
+    // 3. Process empty game JSON -> reset state
+    client.ProcessGameResponse("", "");
+    st = client.GetState();
+    TEST_ASSERT(st.is_running == false, "Empty game json must reset running state");
+    TEST_ASSERT(st.screen_state == "unknown", "Empty game json must reset screen state");
+}
+
+void TestHotkeys() {
+    std::cout << "Running TestHotkeys..." << std::endl;
+    HotkeyManager& hm = HotkeyManager::Instance();
+    // Test that failure to register hotkeys (e.g. with invalid hwnd) records failed hotkeys
+    bool reg = hm.RegisterAll(nullptr);
+    if (!reg) {
+        TEST_ASSERT(hm.HasFailedHotkeys(), "Failed hotkeys should be recorded when registration fails");
+        TEST_ASSERT(!hm.GetFailedHotkeys().empty(), "Failed hotkeys list should not be empty");
+    }
+}
+
 int main() {
     std::cout << "========================================" << std::endl;
     std::cout << "   SC2 Expo Native Verification Suite   " << std::endl;
@@ -546,6 +667,8 @@ int main() {
     TestCommanderManager();
     TestTextureLoader();
     TestArtifactViewer();
+    TestSc2Client();
+    TestHotkeys();
     TestOverlayLifecycle();
 
     std::cout << "========================================" << std::endl;

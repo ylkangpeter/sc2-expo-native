@@ -1,8 +1,10 @@
+# -*- coding: utf-8 -*-
 import subprocess
 import time
 import ctypes
 from ctypes import wintypes
 import sys
+import os
 
 user32 = ctypes.windll.user32
 
@@ -14,8 +16,6 @@ KEYEVENTF_KEYUP = 0x0002
 def press_artifact_hotkey(hwnd):
     # In WSL / headless environment, send WM_HOTKEY directly to the message pump
     user32.PostMessageW(hwnd, 0x0312, 1003, 0)
-
-import os
 
 def test_fixes():
     print("=================================================================")
@@ -124,12 +124,31 @@ def test_fixes():
         print("[PASS] Standalone Settings window closed cleanly!")
 
         # Test 2.5: Tray Lock / Unlock toggle
-        print("\n--- Test 2.5: Testing Tray Lock Toggle (2001) ---")
-        user32.PostMessageW(hwnd, 0x0111, 2001, 0) # ID_TRAY_LOCK
+        print("\n--- Test 2.5: Testing Tray Lock Toggle (2002) ---")
+        GWL_EXSTYLE = -20
+        WS_EX_TRANSPARENT = 0x00000020
+        style_init = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+
+        user32.PostMessageW(hwnd, 0x0111, 2002, 0) # ID_TRAY_LOCK = 2002
         time.sleep(0.3)
-        user32.PostMessageW(hwnd, 0x0111, 2001, 0) # Toggle back
+        if proc.poll() is not None:
+            print("[FAIL] Process exited prematurely after sending ID_TRAY_LOCK!")
+            return False
+        style_toggled = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        if (style_init & WS_EX_TRANSPARENT) == (style_toggled & WS_EX_TRANSPARENT):
+            print("[FAIL] Tray Lock Toggle (2002) did not toggle WS_EX_TRANSPARENT style!")
+            return False
+
+        user32.PostMessageW(hwnd, 0x0111, 2002, 0) # Toggle back
         time.sleep(0.3)
-        print("[PASS] Tray Lock Toggle handled cleanly")
+        if proc.poll() is not None:
+            print("[FAIL] Process exited prematurely after toggling back ID_TRAY_LOCK!")
+            return False
+        style_reverted = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        if (style_toggled & WS_EX_TRANSPARENT) == (style_reverted & WS_EX_TRANSPARENT):
+            print("[FAIL] Tray Lock Toggle did not revert WS_EX_TRANSPARENT style!")
+            return False
+        print("[PASS] Tray Lock Toggle handled cleanly and verified style changes")
 
         # Test 2.5: Verify no artifact shown on non-artifact map
         print("\n--- Test 2.5: Verify non-artifact map never shows artifact overlay ---")
@@ -146,23 +165,36 @@ def test_fixes():
         # Trigger primary hotkey Ctrl+Shift+[ (1001)
         user32.PostMessageW(hwnd, 0x0312, 1001, 0) # WM_HOTKEY MapSwitch
         time.sleep(0.3)
+        if proc.poll() is not None:
+            print("[FAIL] Process exited prematurely after primary MapSwitch hotkey!")
+            return False
         print("[PASS] Primary MapSwitch hotkey (Ctrl+Shift+[, 1001) handled cleanly")
 
         # Trigger direct hotkey Ctrl+[ (1011)
         user32.PostMessageW(hwnd, 0x0312, 1011, 0) # WM_HOTKEY MapSwitch Direct
         time.sleep(0.3)
+        if proc.poll() is not None:
+            print("[FAIL] Process exited prematurely after direct MapSwitch hotkey!")
+            return False
         print("[PASS] Direct MapSwitch hotkey (Ctrl+[, 1011) handled cleanly")
 
-        # Trigger via tray command ID_TRAY_MAP (2002)
-        user32.PostMessageW(hwnd, 0x0111, 2002, 0)
+        # Trigger via tray command ID_TRAY_MAP (2003)
+        user32.PostMessageW(hwnd, 0x0111, 2003, 0) # ID_TRAY_MAP = 2003
         time.sleep(0.3)
-        print("[PASS] Tray command ID_TRAY_MAP (2002) handled cleanly")
+        if proc.poll() is not None:
+            print("[FAIL] Process exited prematurely after ID_TRAY_MAP command!")
+            return False
+        print("[PASS] Tray command ID_TRAY_MAP (2003) handled cleanly")
 
         # Test 4: Clean shutdown
         print("\n--- Test 4: Clean shutdown ---")
         user32.PostMessageW(hwnd, 0x0010, 0, 0) # WM_CLOSE
-        proc.wait(timeout=5)
-        print("[PASS] Process exited cleanly with return code 0")
+        try:
+            proc.wait(timeout=5)
+            print("[PASS] Process exited cleanly with return code 0")
+        except subprocess.TimeoutExpired:
+            print("[FAIL] Process failed to exit within 5s timeout!")
+            return False
 
         print("\n=================================================================")
         print("ALL BUG FIXES VERIFIED SUCCESSFULLY!")

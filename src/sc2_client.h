@@ -27,6 +27,7 @@ public:
     Sc2GameState GetState();
     bool ConsumeNewGameEvent();
     void SetManualMap(const std::string& map_name);
+    void ProcessGameResponse(const std::string& game_json, const std::string& ui_json);
 
 private:
     Sc2Client();

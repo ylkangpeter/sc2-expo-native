@@ -199,12 +199,24 @@ bool ArtifactViewer::RenderToLayeredWindow(const std::string& map_name) {
     }
 
     UINT orig_w = 0, orig_h = 0;
-    pFrame->GetSize(&orig_w, &orig_h);
+    hr = pFrame->GetSize(&orig_w, &orig_h);
+    if (FAILED(hr) || orig_w == 0 || orig_h == 0) {
+        pFrame->Release();
+        pDecoder->Release();
+        pFactory->Release();
+        return false;
+    }
 
-    UINT target_w = (UINT)((float)orig_w * cfg.artifact_scale_ratio);
-    UINT target_h = (UINT)((float)orig_h * cfg.artifact_scale_ratio);
+    float scale = cfg.artifact_scale_ratio;
+    if (std::isnan(scale) || scale < 0.1f) scale = 0.1f;
+    else if (scale > 3.0f) scale = 3.0f;
+
+    UINT target_w = (UINT)((float)orig_w * scale);
+    UINT target_h = (UINT)((float)orig_h * scale);
     if (target_w < 10) target_w = 10;
     if (target_h < 10) target_h = 10;
+    if (target_w > 8192) target_w = 8192;
+    if (target_h > 8192) target_h = 8192;
 
     // Scaler
     IWICBitmapScaler* pScaler = nullptr;
@@ -255,7 +267,7 @@ bool ArtifactViewer::RenderToLayeredWindow(const std::string& map_name) {
         return false;
     }
 
-    SelectObject(hdcMem, hBitmap);
+    HGDIOBJ hOldBmp = SelectObject(hdcMem, hBitmap);
     pConverter->CopyPixels(NULL, target_w * 4, target_w * target_h * 4, (BYTE*)pBits);
 
     // Draw stylish green border around the map
@@ -364,6 +376,7 @@ bool ArtifactViewer::RenderToLayeredWindow(const std::string& map_name) {
     SetWindowPos(m_hwnd, HWND_TOPMOST, center_x, center_y, target_w, target_h, SWP_NOACTIVATE);
 
     // Clean up
+    SelectObject(hdcMem, hOldBmp);
     DeleteObject(hBitmap);
     DeleteDC(hdcMem);
     ReleaseDC(nullptr, hdcScreen);

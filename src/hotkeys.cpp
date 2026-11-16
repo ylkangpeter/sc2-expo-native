@@ -28,40 +28,47 @@ static bool TryRegister(HWND hwnd, int id, UINT mod, UINT vk) {
 
 bool HotkeyManager::RegisterAll(HWND hwnd) {
     UnregisterAll(hwnd);
+    m_failed_hotkeys.clear();
+
+    bool all_success = true;
+
+    auto do_register = [&](int id, UINT mod, UINT vk, HotkeyAction action, const std::string& name) {
+        if (TryRegister(hwnd, id, mod, vk)) {
+            m_action_map[id] = action;
+        } else {
+            all_success = false;
+            m_failed_hotkeys.push_back(name);
+            std::cerr << "Warning: Failed to register global hotkey '" << name
+                      << "' (Error: " << GetLastError() << "). It may be occupied by another application." << std::endl;
+        }
+    };
 
     // Map Variant Switch:
     // Primary: Ctrl + Shift + [
-    TryRegister(hwnd, HOTKEY_MAP_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_4);
-    m_action_map[HOTKEY_MAP_ID] = HotkeyAction::MapSwitch;
+    do_register(HOTKEY_MAP_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_4, HotkeyAction::MapSwitch, "Ctrl+Shift+[");
 
     // Alternative / Direct: Ctrl + [ (bypasses Windows IME Ctrl+Shift input switcher)
-    TryRegister(hwnd, HOTKEY_MAP_ALT_ID, MOD_CONTROL, VK_OEM_4);
-    m_action_map[HOTKEY_MAP_ALT_ID] = HotkeyAction::MapSwitch;
+    do_register(HOTKEY_MAP_ALT_ID, MOD_CONTROL, VK_OEM_4, HotkeyAction::MapSwitch, "Ctrl+[");
 
     // Lock Toggle:
     // Primary: Ctrl + Shift + ]
-    TryRegister(hwnd, HOTKEY_LOCK_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_6);
-    m_action_map[HOTKEY_LOCK_ID] = HotkeyAction::LockToggle;
+    do_register(HOTKEY_LOCK_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_6, HotkeyAction::LockToggle, "Ctrl+Shift+]");
 
     // Alternative / Direct: Ctrl + ]
-    TryRegister(hwnd, HOTKEY_LOCK_ALT_ID, MOD_CONTROL, VK_OEM_6);
-    m_action_map[HOTKEY_LOCK_ALT_ID] = HotkeyAction::LockToggle;
+    do_register(HOTKEY_LOCK_ALT_ID, MOD_CONTROL, VK_OEM_6, HotkeyAction::LockToggle, "Ctrl+]");
 
     // Artifact Toggle:
     // Primary: Ctrl + Shift + \ (VK_OEM_5)
-    TryRegister(hwnd, HOTKEY_ARTIFACT_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_5);
-    m_action_map[HOTKEY_ARTIFACT_ID] = HotkeyAction::ArtifactToggle;
+    do_register(HOTKEY_ARTIFACT_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_5, HotkeyAction::ArtifactToggle, "Ctrl+Shift+\\");
 
     // Alternative / Direct: Ctrl + \ (VK_OEM_5)
-    TryRegister(hwnd, HOTKEY_ARTIFACT_ALT_ID, MOD_CONTROL, VK_OEM_5);
-    m_action_map[HOTKEY_ARTIFACT_ALT_ID] = HotkeyAction::ArtifactToggle;
+    do_register(HOTKEY_ARTIFACT_ALT_ID, MOD_CONTROL, VK_OEM_5, HotkeyAction::ArtifactToggle, "Ctrl+\\");
 
     // Screenshot:
     // Primary: Ctrl + Shift + - (VK_OEM_MINUS)
-    TryRegister(hwnd, HOTKEY_SCREENSHOT_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_MINUS);
-    m_action_map[HOTKEY_SCREENSHOT_ID] = HotkeyAction::Screenshot;
+    do_register(HOTKEY_SCREENSHOT_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_MINUS, HotkeyAction::Screenshot, "Ctrl+Shift+-");
 
-    return true;
+    return all_success;
 }
 
 void HotkeyManager::UnregisterAll(HWND hwnd) {

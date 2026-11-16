@@ -1,8 +1,10 @@
+# -*- coding: utf-8 -*-
 import subprocess
 import time
 import ctypes
 from ctypes import wintypes
 import sys
+import os
 
 user32 = ctypes.windll.user32
 
@@ -22,7 +24,14 @@ def press_hotkey():
 
 def test_lock_toggle():
     print("Launching sc2_expo.exe for lock toggle verification...")
-    proc = subprocess.Popen(["sc2_expo.exe"])
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(script_dir, ".."))
+    exe_path = os.path.join(repo_root, "dist", "sc2_expo", "sc2_expo.exe")
+    run_dir = os.path.join(repo_root, "dist", "sc2_expo")
+    if not os.path.exists(exe_path):
+        exe_path = os.path.join(repo_root, "sc2_expo.exe")
+        run_dir = repo_root
+    proc = subprocess.Popen([exe_path], cwd=run_dir)
     try:
         hwnd = 0
         for _ in range(50):

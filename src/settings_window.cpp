@@ -449,6 +449,13 @@ void SettingsWindow::RenderUI(float delta_time) {
             }
         });
 
+        ImGui::Checkbox("显示 Toast 边框", &cfg.toast_show_border);
+        DrawItemWithLabel("Toast透明度", [&](const char* id) {
+            if (ImGui::SliderFloat(id, &cfg.toast_opacity, 0.1f, 1.0f, "%.2f")) {
+                cfg.toast_opacity = std::round(cfg.toast_opacity * 100.0f) / 100.0f;
+            }
+        });
+
         if (cfg.toast_text_color.size() < 3) {
             cfg.toast_text_color = { 0.0f, 0.86f, 1.0f };
         }
@@ -460,9 +467,11 @@ void SettingsWindow::RenderUI(float delta_time) {
             ImGui::ColorEdit3(id, cfg.toast_text_color.data());
         });
 
+        if (!cfg.toast_show_border) ImGui::BeginDisabled();
         DrawItemWithLabel("Toast边框颜色", [&](const char* id) {
             ImGui::ColorEdit3(id, cfg.toast_border_color.data());
         });
+        if (!cfg.toast_show_border) ImGui::EndDisabled();
 
         ImGui::Spacing();
         float toast_btn_h = std::max(28.0f * cfg.font_scale, ImGui::GetFrameHeight() * 1.15f);

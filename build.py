@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import subprocess
 import sys
 import os
@@ -252,9 +253,62 @@ def build_tests():
         print(f"Tests Build SUCCEEDED in {t1 - t0:.2f}s!")
         return True
 
+def run_tests():
+    if not build_tests():
+        return False
+
+    print("\nExecuting C++ Unit Tests (test_runner.exe)...")
+    runner = "./test_runner.exe" if sys.platform != "win32" else "test_runner.exe"
+    res = subprocess.run([runner], stdin=subprocess.DEVNULL)
+    if res.returncode != 0:
+        print(f"C++ Tests FAILED with exit code {res.returncode}!")
+        return False
+
+    # Check if Python integration tests are requested
+    run_integration = any(arg in sys.argv[2:] for arg in ["all", "integration", "--all", "--integration"]) or any(arg.endswith(".py") for arg in sys.argv[2:])
+    if run_integration:
+        print("\nRebuilding sc2_expo.exe for integration testing...")
+        if not build():
+            print("Failed to build sc2_expo.exe for integration tests!")
+            return False
+
+        integration_args = [arg for arg in sys.argv[2:] if arg.endswith(".py")]
+        integration_tests = integration_args if integration_args else [
+            "tests/test_user_requirements.py",
+            "tests/test_bug_fixes.py",
+            "tests/test_lock_toggle.py",
+            "tests/test_commander_toggle.py",
+            "tests/test_artifact_toggle.py",
+            "tests/verify_app.py",
+        ]
+
+        py_bin = "python.exe" if (shutil.which("python.exe") and sys.platform != "win32") else sys.executable
+        all_passed = True
+        for test_file in integration_tests:
+            if not os.path.exists(test_file):
+                print(f"Python Integration Test FAILED: test file {test_file} not found.")
+                all_passed = False
+                break
+            print(f"\nExecuting Python Integration Test ({test_file})...")
+            py_res = subprocess.run([py_bin, test_file], stdin=subprocess.DEVNULL)
+            if py_res.returncode != 0:
+                print(f"Python Integration Test FAILED: {test_file}")
+                all_passed = False
+                break
+            print(f"Python Integration Test SUCCEEDED: {test_file}")
+
+        if not all_passed:
+            print("\nPython Integration Test Suite FAILED!")
+            return False
+        print("\nAll Python Integration Tests SUCCEEDED!")
+    else:
+        print("\nTip: Run 'python build.py test all' to also execute Python GUI integration tests.")
+
+    return True
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "test":
-        success = build_tests()
+        success = run_tests()
     else:
         success = build()
     sys.exit(0 if success else 1)

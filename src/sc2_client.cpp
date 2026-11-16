@@ -147,81 +147,96 @@ void Sc2Client::PollThreadFunc() {
         }
 
         // Live SC2 API polling
-        // 1. Poll /game
+        // 1. Poll /game and /ui
         std::string game_json = HttpGet("127.0.0.1", 6119, "/game");
-        if (game_json.empty()) {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            m_state.is_running = false;
-            m_state.screen_state = "unknown";
-            continue;
-        }
-
-        // 2. Poll /ui
         std::string ui_json = HttpGet("127.0.0.1", 6119, "/ui");
-        std::string screen_state = "unknown";
-        if (!ui_json.empty()) {
-            try {
-                json uij = json::parse(ui_json);
-                if (uij.contains("activeScreens") && uij["activeScreens"].is_array()) {
-                    if (uij["activeScreens"].empty()) {
-                        screen_state = "in_game";
-                    } else {
-                        screen_state = "matchmaking";
-                    }
-                }
-            } catch (...) {}
-        }
+        ProcessGameResponse(game_json, ui_json);
+    }
+}
 
+void Sc2Client::ProcessGameResponse(const std::string& game_json, const std::string& ui_json) {
+    if (game_json.empty()) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_state.is_running = false;
+        m_state.screen_state = "unknown";
+        m_state.display_time = 0.0f;
+        m_state.current_seconds = 0;
+        m_state.players.clear();
+        m_state.is_new_game_event = false;
+        return;
+    }
+
+    std::string screen_state = "unknown";
+    if (!ui_json.empty()) {
         try {
-            json gj = json::parse(game_json);
-            float display_time = gj.value("displayTime", 0.0f);
-            std::string map_hint = gj.value("map", "");
-
-            std::vector<PlayerInfo> current_players;
-            if (gj.contains("players") && gj["players"].is_array()) {
-                for (const auto& item : gj["players"]) {
-                    PlayerInfo p;
-                    p.id = item.value("id", 0);
-                    p.name = item.value("name", "");
-                    p.type = item.value("type", "");
-                    p.race = item.value("race", "");
-                    current_players.push_back(p);
+            json uij = json::parse(ui_json);
+            if (uij.contains("activeScreens") && uij["activeScreens"].is_array()) {
+                if (uij["activeScreens"].empty()) {
+                    screen_state = "in_game";
+                } else {
+                    screen_state = "matchmaking";
                 }
             }
+        } catch (...) {}
+    }
 
-            size_t new_id = ComputeSessionFingerprint(current_players);
-            bool time_went_back = (m_last_display_time >= 0.0f && display_time < m_last_display_time);
-            bool is_new_game = (new_id != m_current_session_id || time_went_back);
+    try {
+        json gj = json::parse(game_json);
+        float display_time = gj.value("displayTime", 0.0f);
+        std::string map_hint = gj.value("map", "");
 
-            m_current_session_id = new_id;
-            m_last_display_time = display_time;
-
-            std::lock_guard<std::mutex> lock(m_mutex);
-            m_state.is_running = true;
-            m_state.screen_state = screen_state;
-            m_state.display_time = display_time;
-            m_state.current_seconds = (int)display_time;
-            m_state.players = current_players;
-            m_state.is_new_game_event = is_new_game;
-
-            if (is_new_game && current_players.size() > 2) {
-                // Check if not all users (i.e. is coop)
-                bool all_users = true;
-                for (const auto& p : current_players) {
-                    if (p.type != "user") {
-                        all_users = false;
-                        break;
-                    }
-                }
-                if (!all_users) {
-                    std::string identified = MapDetector::Instance().Identify(current_players, map_hint);
-                    if (!identified.empty()) {
-                        m_state.current_map = identified;
-                    }
-                }
+        std::vector<PlayerInfo> current_players;
+        if (gj.contains("players") && gj["players"].is_array()) {
+            for (const auto& item : gj["players"]) {
+                PlayerInfo p;
+                p.id = item.value("id", 0);
+                p.name = item.value("name", "");
+                p.type = item.value("type", "");
+                p.race = item.value("race", "");
+                current_players.push_back(p);
             }
-        } catch (...) {
-            // Json parse error or malformed response
         }
+
+        size_t new_id = ComputeSessionFingerprint(current_players);
+        bool time_went_back = (m_last_display_time >= 0.0f && display_time < m_last_display_time);
+        bool is_new_game = (new_id != m_current_session_id || time_went_back);
+
+        m_current_session_id = new_id;
+        m_last_display_time = display_time;
+
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_state.is_running = true;
+        m_state.screen_state = screen_state;
+        m_state.display_time = display_time;
+        m_state.current_seconds = (int)display_time;
+        m_state.players = current_players;
+        m_state.is_new_game_event = is_new_game;
+
+        if (is_new_game && current_players.size() > 2) {
+            // Check if not all users (i.e. is coop)
+            bool all_users = true;
+            for (const auto& p : current_players) {
+                if (p.type != "user") {
+                    all_users = false;
+                    break;
+                }
+            }
+            if (!all_users) {
+                std::string identified = MapDetector::Instance().Identify(current_players, map_hint);
+                if (!identified.empty()) {
+                    m_state.current_map = identified;
+                }
+            }
+        }
+    } catch (...) {
+        // Json parse error, truncated network response, or malformed SC2 API output:
+        // Explicitly reset game state to unknown/non-running to avoid stale time & event triggers.
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_state.is_running = false;
+        m_state.screen_state = "unknown";
+        m_state.display_time = 0.0f;
+        m_state.current_seconds = 0;
+        m_state.players.clear();
+        m_state.is_new_game_event = false;
     }
 }

@@ -3,6 +3,7 @@
 #include "troop_manager.h"
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 
 static std::wstring Utf8ToWide(const std::string& str) {
     if (str.empty()) return L"";
@@ -183,7 +184,8 @@ void ToastWindow::RenderToast() {
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-            bool is_border = (x <= 1 || x >= width - 2 || y <= 1 || y >= height - 2);
+            bool is_border = cfg.toast_show_border &&
+                             (x <= 1 || x >= width - 2 || y <= 1 || y >= height - 2);
             pixels[y * width + x] = is_border ? premul_border : premul_bg;
         }
     }
@@ -230,7 +232,9 @@ void ToastWindow::RenderToast() {
     POINT ptPos = { toast_x, toast_y };
     SIZE sizeWnd = { width, height };
     POINT ptSrc = { 0, 0 };
-    BLENDFUNCTION blend = { AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
+    float opacity = std::clamp(cfg.toast_opacity, 0.1f, 1.0f);
+    BYTE source_alpha = (BYTE)std::lround(opacity * 255.0f);
+    BLENDFUNCTION blend = { AC_SRC_OVER, 0, source_alpha, AC_SRC_ALPHA };
 
     SetWindowPos(m_hwnd, HWND_TOPMOST, toast_x, toast_y, width, height,
                  SWP_NOACTIVATE | SWP_SHOWWINDOW);

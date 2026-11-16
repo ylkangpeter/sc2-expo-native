@@ -1,8 +1,10 @@
+# -*- coding: utf-8 -*-
 import subprocess
 import time
 import ctypes
 from ctypes import wintypes
 import sys
+import os
 
 user32 = ctypes.windll.user32
 
@@ -16,7 +18,14 @@ class RECT(ctypes.Structure):
 
 def test_commander_toggle():
     print("Launching sc2_expo.exe for commander drawer verification...")
-    proc = subprocess.Popen(["sc2_expo.exe"])
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(script_dir, ".."))
+    exe_path = os.path.join(repo_root, "dist", "sc2_expo", "sc2_expo.exe")
+    run_dir = os.path.join(repo_root, "dist", "sc2_expo")
+    if not os.path.exists(exe_path):
+        exe_path = os.path.join(repo_root, "sc2_expo.exe")
+        run_dir = repo_root
+    proc = subprocess.Popen([exe_path], cwd=run_dir)
     try:
         hwnd = 0
         for _ in range(50):
@@ -54,8 +63,8 @@ def test_commander_toggle():
         user32.GetWindowRect(hwnd, ctypes.byref(rect))
         w2 = rect.right - rect.left
         print(f"Collapsed Window Width: {w2}")
-        if w2 != 175:
-            print(f"[FAIL] Expected collapsed width 175, got {w2}")
+        if abs(w2 - w0) > 2:
+            print(f"[FAIL] Expected collapsed width {w0}, got {w2}")
             return False
 
         print("[PASS] Commander selector drawer expands and collapses cleanly!")

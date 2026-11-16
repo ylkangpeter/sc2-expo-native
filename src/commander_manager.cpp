@@ -123,17 +123,23 @@ bool CommanderManager::CopyReplacementLink(const std::string& commander, const s
 
     EmptyClipboard();
 
+    bool success = false;
     HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, wlen * sizeof(wchar_t));
     if (hMem) {
         wchar_t* pMem = (wchar_t*)GlobalLock(hMem);
         if (pMem) {
             wcscpy_s(pMem, wlen, wtext.c_str());
             GlobalUnlock(hMem);
-            SetClipboardData(CF_UNICODETEXT, hMem);
+            if (SetClipboardData(CF_UNICODETEXT, hMem) != nullptr) {
+                success = true;
+            }
+        }
+        if (!success) {
+            GlobalFree(hMem);
         }
     }
     CloseClipboard();
-    return true;
+    return success;
 }
 
 std::string CommanderManager::PickRandomCommander(const std::string& region, const std::vector<std::string>& blacklist) const {

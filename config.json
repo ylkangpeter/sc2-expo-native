@@ -1,30 +1,80 @@
 {
     "config_version": 2,
-    "blacklist": [],
-    "current_language": "zh",
     "current_region": "kr",
+    "current_language": "zh",
     "debug_mode": false,
     "debug_time_factor": 5.0,
-    "font_scale": 1.0,
-    "main_window_height": 350,
-    "main_window_width": 180,
+    "map_shortcut": "ctrl + shift + [",
+    "lock_shortcut": "ctrl + shift + ]",
+    "screenshot_shortcut": "ctrl + shift + -",
+    "show_artifact_shortcut": "ctrl + shift + \\",
     "main_window_x": 506,
     "main_window_y": 463,
+    "main_window_width": 180,
+    "main_window_height": 350,
     "table_height": 235,
+    "table_font_size": 13,
+    "font_scale": 1.0,
     "time_alert_seconds": 30,
     "toast_allowed": true,
     "toast_when_hidden": false,
+    "toast_position_y": 0.18,
+    "toast_scale": 1.43,
+    "toast_duration_ms": 8000,
+    "toast_show_border": true,
+    "toast_opacity": 1.0,
+    "toast_text_color": [
+        0.0,
+        0.86,
+        1.0
+    ],
     "toast_border_color": [
         0.0,
         0.75,
         1.0
     ],
-    "toast_duration_ms": 8000,
-    "toast_position_y": 0.18,
-    "toast_scale": 1.43,
-    "toast_text_color": [
-        0.0,
-        0.86,
-        1.0
-    ]
+    "mutator_alert_seconds": 30,
+    "mutator_duration_seconds": 5,
+    "mutator_toast_position_y": 0.70,
+    "artifact_scale_ratio": 0.70,
+    "artifact_opacity": 0.65,
+    "blacklist": [],
+    "artifact_positions": {
+        "死亡摇篮": {
+            "x_ratio": 0.5110732555389404,
+            "y_ratio": 0.551369845867157,
+            "width": 40,
+            "height": 40
+        },
+        "湮灭快车": {
+            "x_ratio": 0.4177151620388031,
+            "y_ratio": 0.7760531902313232,
+            "width": 40,
+            "height": 40
+        },
+        "净网行动": {
+            "x_ratio": 0.2660427689552307,
+            "y_ratio": 0.6907630562782288,
+            "width": 40,
+            "height": 40
+        },
+        "营救矿工": {
+            "x_ratio": 0.6153846383094788,
+            "y_ratio": 0.4632701277732849,
+            "width": 40,
+            "height": 40
+        },
+        "亡者之夜": {
+            "x_ratio": 0.37681159377098084,
+            "y_ratio": 0.5277185440063477,
+            "width": 40,
+            "height": 40
+        },
+        "熔火危机": {
+            "x_ratio": 0.4094223380088806,
+            "y_ratio": 0.8995502591133118,
+            "width": 40,
+            "height": 40
+        }
+    }
 }
