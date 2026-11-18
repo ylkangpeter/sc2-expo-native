@@ -39,6 +39,7 @@ static UINT GetWindowDPI(HWND hwnd) {
 static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (SettingsWindow::Instance().IsRecording()) {
         if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) {
+            if (lParam & (1L << 30)) return 0;
             if (wParam == VK_ESCAPE) {
                 SettingsWindow::Instance().CancelRecording();
                 return 0;
@@ -51,10 +52,10 @@ static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
             }
 
             unsigned int mod = 0;
-            if (GetKeyState(VK_CONTROL) & 0x8000) mod |= 0x0002;
-            if (GetKeyState(VK_MENU) & 0x8000)    mod |= 0x0001;
-            if (GetKeyState(VK_SHIFT) & 0x8000)   mod |= 0x0004;
-            if ((GetKeyState(VK_LWIN) & 0x8000) || (GetKeyState(VK_RWIN) & 0x8000)) mod |= 0x0008;
+            if (GetKeyState(VK_CONTROL) & 0x8000) mod |= MOD_CONTROL;
+            if (GetKeyState(VK_MENU) & 0x8000)    mod |= MOD_ALT;
+            if (GetKeyState(VK_SHIFT) & 0x8000)   mod |= MOD_SHIFT;
+            if ((GetKeyState(VK_LWIN) & 0x8000) || (GetKeyState(VK_RWIN) & 0x8000)) mod |= MOD_WIN;
 
             SettingsWindow::Instance().ApplyRecordedHotkey(mod, static_cast<unsigned int>(wParam));
             return 0;
@@ -242,6 +243,7 @@ bool SettingsWindow::Init(HINSTANCE hInstance, ID3D11Device* device, ID3D11Devic
 }
 
 void SettingsWindow::Shutdown() {
+    m_recording_action = 0;
     CleanupRenderTarget();
     if (m_swapChain) {
         m_swapChain->Release();
@@ -320,27 +322,68 @@ void SettingsWindow::Show(bool show) {
     }
 }
 
-void SettingsWindow::ApplyRecordedHotkey(unsigned int mod, unsigned int vk) {
-    auto& cfg = AppConfig::Instance();
-    std::string formatted = AppConfig::FormatHotkey(mod, vk);
-
-    if (m_recording_action == 1) {
-        cfg.map_hotkey_mod = mod;
-        cfg.map_hotkey_vk = vk;
-        cfg.map_shortcut = formatted;
-    } else if (m_recording_action == 2) {
-        cfg.lock_hotkey_mod = mod;
-        cfg.lock_hotkey_vk = vk;
-        cfg.lock_shortcut = formatted;
-    } else if (m_recording_action == 3) {
-        cfg.artifact_hotkey_mod = mod;
-        cfg.artifact_hotkey_vk = vk;
-        cfg.show_artifact_shortcut = formatted;
+void SettingsWindow::StartRecording(int action) {
+    if (!IsRecording() && !HotkeyManager::Instance().Suspend()) {
+        ShowSaveNotice("无法暂停全局快捷键，请重试。", false);
+        return;
     }
+    m_recording_action = action;
+    m_save_notice = "";
+    m_save_notice_timer = 0.0f;
+}
 
+void SettingsWindow::CancelRecording() {
+    if (!IsRecording()) return;
     m_recording_action = 0;
-    cfg.Save();
-    HotkeyManager::Instance().ReRegister();
+    if (!HotkeyManager::Instance().Resume()) {
+        ShowSaveNotice("部分原快捷键无法恢复，请检查占用情况。", false);
+    }
+}
+
+void SettingsWindow::ApplyRecordedHotkey(unsigned int mod, unsigned int vk) {
+    if (!IsRecording()) return;
+    const int action = m_recording_action;
+    m_recording_action = 0;
+    const std::string formatted = AppConfig::FormatHotkey(mod, vk);
+    auto set_hotkey = [&](AppConfig& cfg) {
+        if (action == 1) {
+            cfg.map_hotkey_mod = mod;
+            cfg.map_hotkey_vk = vk;
+            cfg.map_shortcut = formatted;
+        } else if (action == 2) {
+            cfg.lock_hotkey_mod = mod;
+            cfg.lock_hotkey_vk = vk;
+            cfg.lock_shortcut = formatted;
+        } else if (action == 3) {
+            cfg.artifact_hotkey_mod = mod;
+            cfg.artifact_hotkey_vk = vk;
+            cfg.show_artifact_shortcut = formatted;
+        }
+    };
+
+    auto& cfg = AppConfig::Instance();
+    AppConfig candidate = cfg;
+    set_hotkey(candidate);
+    if (SaveHotkeyChanges(candidate)) set_hotkey(cfg);
+}
+
+bool SettingsWindow::SaveHotkeyChanges(const AppConfig& candidate) {
+    bool write_failed = false;
+    if (!HotkeyManager::Instance().Apply(candidate, [&] {
+        write_failed = !candidate.Save();
+        return !write_failed;
+    })) {
+        ShowSaveNotice(write_failed ? "配置写入失败。" : "快捷键注册失败，请检查冲突或系统保留键。", false);
+        return false;
+    }
+    ShowSaveNotice("设置已保存并生效。", true);
+    return true;
+}
+
+void SettingsWindow::ShowSaveNotice(const char* message, bool success) {
+    m_save_notice = message;
+    m_save_succeeded = success;
+    m_save_notice_timer = success ? 3.0f : 0.0f;
 }
 
 void SettingsWindow::Toggle() {
@@ -630,30 +673,21 @@ void SettingsWindow::RenderUI(float delta_time) {
 
         float rst_hotkey_h = std::max(24.0f * cfg.font_scale, ImGui::GetFrameHeight());
         if (ImGui::Button("恢复默认快捷键", ImVec2(avail_w, rst_hotkey_h))) {
-            CancelRecording();
-            cfg.map_hotkey_mod = 0x0002 | 0x0004;
-            cfg.map_hotkey_vk = 0xDB;
-            cfg.map_shortcut = AppConfig::FormatHotkey(cfg.map_hotkey_mod, cfg.map_hotkey_vk);
-
-            cfg.lock_hotkey_mod = 0x0002 | 0x0004;
-            cfg.lock_hotkey_vk = 0xDD;
-            cfg.lock_shortcut = AppConfig::FormatHotkey(cfg.lock_hotkey_mod, cfg.lock_hotkey_vk);
-
-            cfg.artifact_hotkey_mod = 0x0002 | 0x0004;
-            cfg.artifact_hotkey_vk = 0xDC;
-            cfg.show_artifact_shortcut = AppConfig::FormatHotkey(cfg.artifact_hotkey_mod, cfg.artifact_hotkey_vk);
-
-            cfg.Save();
-            HotkeyManager::Instance().ReRegister();
+            m_recording_action = 0;
+            AppConfig candidate = cfg;
+            candidate.ResetHotkeys();
+            if (SaveHotkeyChanges(candidate)) cfg.ResetHotkeys();
         }
 
         if (HotkeyManager::Instance().HasFailedHotkeys()) {
             ImGui::Spacing();
-            std::string warn = "注意：以下快捷键冲突（被其他程序占用）：";
+            std::string warn = "以下快捷键注册失败：";
             for (const auto& name : HotkeyManager::Instance().GetFailedHotkeys()) {
                 warn += "\n  - " + name;
             }
-            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", warn.c_str());
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
+            ImGui::TextWrapped("%s", warn.c_str());
+            ImGui::PopStyleColor();
         }
 
         ImGui::Spacing();
@@ -665,18 +699,23 @@ void SettingsWindow::RenderUI(float delta_time) {
         float min_btn_w = ImGui::CalcTextSize("恢复默认").x + ImGui::GetStyle().FramePadding.x * 2.0f + 8.0f;
 
         auto SaveAction = [&]() {
-            cfg.Save();
-            HotkeyManager::Instance().ReRegister();
-            m_save_notice_timer = 3.0f;
+            CancelRecording();
+            if (cfg.Save()) {
+                ShowSaveNotice("设置已保存。", true);
+            } else {
+                ShowSaveNotice("配置写入失败。", false);
+            }
         };
         auto ResetAction = [&]() {
             int sw = GetSystemMetrics(SM_CXSCREEN);
             int sh = GetSystemMetrics(SM_CYSCREEN);
-            cfg.ResetToResolutionDefaults(sw, sh);
-            cfg.Save();
-            HotkeyManager::Instance().ReRegister();
-            m_need_update_dimensions = true;
-            m_save_notice_timer = 3.0f;
+            m_recording_action = 0;
+            AppConfig candidate = cfg;
+            candidate.ResetToResolutionDefaults(sw, sh);
+            if (SaveHotkeyChanges(candidate)) {
+                cfg.ResetToResolutionDefaults(sw, sh);
+                m_need_update_dimensions = true;
+            }
         };
         auto CloseAction = [&]() {
             m_need_hide = true;
@@ -704,9 +743,12 @@ void SettingsWindow::RenderUI(float delta_time) {
             if (ImGui::Button("关闭", ImVec2(avail_w, act_btn_h))) CloseAction();
         }
 
-        if (m_save_notice_timer > 0.0f) {
+        if (m_save_notice_timer > 0.0f || (!m_save_succeeded && *m_save_notice)) {
             ImGui::Spacing();
-            ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.5f, 1.0f), "设置已成功保存并生效！");
+            ImGui::PushStyleColor(ImGuiCol_Text, m_save_succeeded ? ImVec4(0.0f, 1.0f, 0.5f, 1.0f)
+                                                                : ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
+            ImGui::TextWrapped("%s", m_save_notice);
+            ImGui::PopStyleColor();
         }
 
         // Measure content bottom to adapt window height

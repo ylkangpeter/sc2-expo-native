@@ -33,6 +33,7 @@ struct AppConfig {
 
     static std::string FormatHotkey(unsigned int mod, unsigned int vk);
     static bool ParseHotkey(const std::string& str, unsigned int& out_mod, unsigned int& out_vk);
+    void ResetHotkeys();
 
     // Overlay Window Settings (Base 1080p reference, dynamically scaled)
     int main_window_x = 0;

@@ -88,6 +88,17 @@ void TestConfig() {
     TEST_ASSERT(std::abs(test_cfg.artifact_opacity - 0.75f) < 0.01f, "Reloaded artifact_opacity should match");
     TEST_ASSERT(test_cfg.artifact_positions.find("custom_test_map") != test_cfg.artifact_positions.end(), "Reloaded custom artifact position should exist");
     TEST_ASSERT(std::abs(test_cfg.artifact_positions["custom_test_map"].x_ratio - 0.42f) < 0.01f, "Reloaded artifact x_ratio match");
+    // A destination that cannot be replaced must retain its previous contents.
+    HANDLE locked_config = CreateFileA("test_config.json", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                       nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    TEST_ASSERT(locked_config != INVALID_HANDLE_VALUE, "Test config should open for replacement test");
+    cfg.table_font_size = 22;
+    TEST_ASSERT(!cfg.Save("test_config.json"), "Save should report replacement failure");
+    CloseHandle(locked_config);
+    AppConfig preserved_cfg;
+    TEST_ASSERT(preserved_cfg.Load("test_config.json") && preserved_cfg.table_font_size == 16,
+                "Failed save should preserve the previous config");
+    TEST_ASSERT(!cfg.Save("missing_test_directory/config.json"), "Save should report temporary file creation failure");
     remove("test_config.json");
 
     // Test legacy migration without config_version
@@ -104,6 +115,27 @@ void TestConfig() {
         TEST_ASSERT(legacy_cfg.config_version == 2, "Migrated config should be version 2");
         TEST_ASSERT(legacy_cfg.NeedsMigration() == false, "Migrated config should not need migration");
         remove("legacy_config.json");
+    }
+
+    // Invalid legacy function keys must not interrupt loading subsequent fields.
+    {
+        unsigned int mod = 7, vk = 42;
+        TEST_ASSERT(!AppConfig::ParseHotkey("Ctrl + F999999999999999999999", mod, vk), "Oversized function key should be rejected");
+        TEST_ASSERT(mod == 7 && vk == 42, "Failed parse should leave outputs unchanged");
+        TEST_ASSERT(!AppConfig::ParseHotkey("Ctrl + F1garbage", mod, vk), "Function key with trailing text should be rejected");
+        TEST_ASSERT(AppConfig::ParseHotkey("Ctrl + F24", mod, vk) && mod == MOD_CONTROL && vk == VK_F24, "F24 should parse");
+
+        std::ofstream legacy_out("legacy_bad_hotkey.json");
+        legacy_out << R"({"map_shortcut":"Ctrl + F999999999999999999999","lock_shortcut":"Ctrl + F2","main_window_width":173})";
+        legacy_out.close();
+        AppConfig legacy_cfg;
+        const unsigned int original_mod = legacy_cfg.map_hotkey_mod;
+        const unsigned int original_vk = legacy_cfg.map_hotkey_vk;
+        TEST_ASSERT(legacy_cfg.Load("legacy_bad_hotkey.json"), "Malformed legacy hotkey should not abort config loading");
+        TEST_ASSERT(legacy_cfg.map_hotkey_mod == original_mod && legacy_cfg.map_hotkey_vk == original_vk, "Malformed hotkey should retain previous binding");
+        TEST_ASSERT(legacy_cfg.lock_hotkey_mod == MOD_CONTROL && legacy_cfg.lock_hotkey_vk == VK_F2, "Later hotkey should load");
+        TEST_ASSERT(legacy_cfg.main_window_width == 173, "Later config fields should load");
+        remove("legacy_bad_hotkey.json");
     }
 
     // Test Resolution Defaults
@@ -652,12 +684,82 @@ void TestSc2Client() {
 void TestHotkeys() {
     std::cout << "Running TestHotkeys..." << std::endl;
     HotkeyManager& hm = HotkeyManager::Instance();
-    // Test that failure to register hotkeys (e.g. with invalid hwnd) records failed hotkeys
-    bool reg = hm.RegisterAll(nullptr);
-    if (!reg) {
-        TEST_ASSERT(hm.HasFailedHotkeys(), "Failed hotkeys should be recorded when registration fails");
-        TEST_ASSERT(!hm.GetFailedHotkeys().empty(), "Failed hotkeys list should not be empty");
+    HWND window = CreateWindowExW(0, L"STATIC", L"", 0, 0, 0, 0, 0, HWND_MESSAGE,
+                                  nullptr, GetModuleHandleW(nullptr), nullptr);
+    TEST_ASSERT(window != nullptr, "Hotkey tests need a Win32 message window");
+    if (!window) return;
+
+    const UINT mods = MOD_CONTROL | MOD_ALT | MOD_SHIFT;
+    const int probe_id = 42;
+    auto is_available = [&](UINT vk) {
+        if (!RegisterHotKey(nullptr, probe_id, mods, vk)) return false;
+        UnregisterHotKey(nullptr, probe_id);
+        return true;
+    };
+    std::vector<UINT> keys;
+    for (UINT vk = VK_F13; vk <= VK_F24 && keys.size() < 3; ++vk) {
+        if (is_available(vk)) keys.push_back(vk);
     }
+    TEST_ASSERT(keys.size() == 3, "Hotkey tests need three available combinations");
+    if (keys.size() != 3) {
+        DestroyWindow(window);
+        return;
+    }
+
+    AppConfig& cfg = AppConfig::Instance();
+    const AppConfig original = cfg;
+    cfg.map_hotkey_mod = mods;
+    cfg.map_hotkey_vk = keys[0];
+    cfg.map_shortcut = AppConfig::FormatHotkey(mods, keys[0]);
+    cfg.lock_hotkey_mod = mods;
+    cfg.lock_hotkey_vk = keys[1];
+    cfg.lock_shortcut = AppConfig::FormatHotkey(mods, keys[1]);
+    cfg.artifact_hotkey_vk = 0;
+    TEST_ASSERT(hm.RegisterAll(window), "Configured hotkeys should register on startup");
+    TEST_ASSERT(!is_available(keys[0]) && !is_available(keys[1]), "Both initial hotkeys should be registered");
+    TEST_ASSERT(hm.RegisterAll(nullptr), "Re-registering without a window should retain the existing window");
+    TEST_ASSERT(!is_available(keys[0]) && !is_available(keys[1]), "Re-registration should retain both shortcuts");
+
+    TEST_ASSERT(hm.Suspend(), "Hotkeys should suspend while recording");
+    TEST_ASSERT(is_available(keys[0]) && is_available(keys[1]), "Recording should release existing shortcuts");
+    TEST_ASSERT(hm.Resume(), "Cancelling recording should restore both hotkeys");
+    TEST_ASSERT(!is_available(keys[0]) && !is_available(keys[1]), "Both shortcuts should work again after cancellation");
+
+    TEST_ASSERT(hm.Suspend(), "Recording should suspend hotkeys again");
+    AppConfig candidate = cfg;
+    candidate.map_hotkey_vk = keys[1];
+    candidate.map_shortcut = cfg.lock_shortcut;
+    bool persisted = false;
+    TEST_ASSERT(!hm.Apply(candidate, [&] { persisted = true; return true; }), "A duplicate shortcut should be rejected");
+    TEST_ASSERT(!persisted && !is_available(keys[0]) && !is_available(keys[1]),
+                "Rejected recording should restore old bindings without writing the configuration");
+
+    candidate.map_hotkey_vk = keys[2];
+    candidate.map_shortcut = AppConfig::FormatHotkey(mods, keys[2]);
+    TEST_ASSERT(!hm.Apply(candidate, [] { return false; }), "A write failure should reject the new shortcut");
+    TEST_ASSERT(!is_available(keys[0]) && !is_available(keys[1]) && is_available(keys[2]),
+                "A write failure should leave the previous bindings active");
+    TEST_ASSERT(hm.Apply(candidate, [&] {
+        persisted = !is_available(keys[2]);
+        return persisted;
+    }), "A free shortcut should register before configuration is written");
+    TEST_ASSERT(persisted && is_available(keys[0]) && !is_available(keys[1]) && !is_available(keys[2]),
+                "Successful apply should replace only the changed shortcut");
+
+    hm.UnregisterAll();
+    const bool blocked = RegisterHotKey(nullptr, probe_id, mods, keys[1]) != FALSE;
+    TEST_ASSERT(blocked, "Another owner should be able to reserve the lock shortcut");
+    if (blocked) {
+        TEST_ASSERT(!hm.RegisterAll(window) && hm.HasFailedHotkeys(), "An occupied startup shortcut should be reported");
+        TEST_ASSERT(hm.Suspend() && hm.Resume() && hm.HasFailedHotkeys(),
+                    "Cancelling recording should preserve the warning for an unavailable startup shortcut");
+        TEST_ASSERT(hm.Apply(candidate, [] { return true; }) && !is_available(keys[2]),
+                    "An unchanged startup conflict should allow the other binding to be updated");
+        UnregisterHotKey(nullptr, probe_id);
+    }
+    hm.UnregisterAll();
+    cfg = original;
+    DestroyWindow(window);
 }
 
 int main() {

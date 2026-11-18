@@ -153,7 +153,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         return 0;
 
     case WM_HOTKEY:
-        HotkeyManager::Instance().OnHotkey((int)wParam);
+        HotkeyManager::Instance().OnHotkey((int)wParam, lParam);
         return 0;
 
     case WM_SIZE:

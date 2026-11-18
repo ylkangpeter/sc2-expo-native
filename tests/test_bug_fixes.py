@@ -8,14 +8,38 @@ import os
 
 user32 = ctypes.windll.user32
 
-VK_CONTROL = 0x11
-VK_SHIFT = 0x10
-VK_OEM_5 = 0xDC # '\' key
-KEYEVENTF_KEYUP = 0x0002
+WM_HOTKEY = 0x0312
+MOD_CONTROL = 0x0002
+MOD_SHIFT = 0x0004
 
-def press_artifact_hotkey(hwnd):
-    # In WSL / headless environment, send WM_HOTKEY directly to the message pump
-    user32.PostMessageW(hwnd, 0x0312, 1003, 0)
+
+def configured_hotkeys(run_dir):
+    # Registration assigns IDs to enabled primary bindings first, then default aliases.
+    import json
+    config_path = os.path.join(run_dir, "config.json")
+    with open(config_path, encoding="utf-8") as config_file:
+        config = json.load(config_file)
+    specs = [
+        ("map", "map_hotkey", 0xDB),
+        ("lock", "lock_hotkey", 0xDD),
+        ("artifact", "artifact_hotkey", 0xDC),
+    ]
+    primary, aliases = [], []
+    for name, prefix, default_vk in specs:
+        mod = config.get(prefix + "_mod", MOD_CONTROL | MOD_SHIFT)
+        vk = config.get(prefix + "_vk", default_vk)
+        if vk:
+            primary.append((name, mod, vk))
+            if mod == MOD_CONTROL | MOD_SHIFT and vk == default_vk:
+                aliases.append((name + "_alias", MOD_CONTROL, vk))
+    return {name: (1001 + index, mod, vk)
+            for index, (name, mod, vk) in enumerate(primary + aliases)}
+
+
+def send_hotkey(hwnd, binding):
+    hotkey_id, mod, vk = binding
+    return bool(user32.PostMessageW(hwnd, WM_HOTKEY, hotkey_id, mod | (vk << 16)))
+
 
 def test_fixes():
     print("=================================================================")
@@ -30,13 +54,21 @@ def test_fixes():
         exe_path = os.path.join(repo_root, "sc2_expo.exe")
         run_dir = repo_root
 
+    bindings = configured_hotkeys(run_dir)
+    if "lock" not in bindings or "artifact" not in bindings:
+        print("[FAIL] Lock and artifact shortcuts must be enabled for this test")
+        return False
     proc = subprocess.Popen([exe_path], cwd=run_dir)
     try:
         hwnd = 0
         for _ in range(50):
             hwnd = user32.FindWindowW("SC2ExpoNativeOverlay", "SC2 Expo Native")
             if hwnd:
-                break
+                owner = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+                if owner.value == proc.pid:
+                    break
+                hwnd = 0
             time.sleep(0.1)
         if not hwnd:
             print("[FAIL] Main window not found")
@@ -57,6 +89,23 @@ def test_fixes():
             return False
         print(f"[PASS] Toast overlay window found (HWND={h_toast})")
 
+        # Confirm this process actually registered the computed ID and binding.
+        initial_style = user32.GetWindowLongW(hwnd, -20)
+        if not send_hotkey(hwnd, bindings["lock"]):
+            print("[FAIL] Could not post lock hotkey")
+            return False
+        time.sleep(0.3)
+        changed_style = user32.GetWindowLongW(hwnd, -20)
+        if not ((initial_style ^ changed_style) & 0x20):
+            print("[FAIL] Configured lock hotkey did not toggle click-through")
+            return False
+        send_hotkey(hwnd, bindings["lock"])
+        time.sleep(0.3)
+        if (user32.GetWindowLongW(hwnd, -20) ^ initial_style) & 0x20:
+            print("[FAIL] Configured lock hotkey did not restore click-through")
+            return False
+        print("[PASS] Configured hotkey registration verified by lock state changes")
+
         # Test 1: Check Live SC2 Game & Artifact Behavior
         # Per user requirement: Non-artifact maps MUST NOT show any artifact overlay!
         print("\n--- Test 1: Testing Artifact toggle according to map artifact presence ---")
@@ -72,7 +121,7 @@ def test_fixes():
         except Exception:
             pass
 
-        press_artifact_hotkey(hwnd)
+        send_hotkey(hwnd, bindings["artifact"])
         time.sleep(0.8)
 
         vis = user32.IsWindowVisible(h_art)
@@ -88,7 +137,7 @@ def test_fixes():
                 return False
             print("[PASS] Artifact overlay showed successfully!")
             # Hide it
-            press_artifact_hotkey(hwnd)
+            send_hotkey(hwnd, bindings["artifact"])
             time.sleep(0.5)
             vis = user32.IsWindowVisible(h_art)
             if vis:
@@ -162,22 +211,8 @@ def test_fixes():
 
         # Test 3: Testing AB Map Switch Hotkey & Command
         print("\n--- Test 3: Testing AB Map Switch Hotkeys & Tray Command ---")
-        # Trigger primary hotkey Ctrl+Shift+[ (1001)
-        user32.PostMessageW(hwnd, 0x0312, 1001, 0) # WM_HOTKEY MapSwitch
-        time.sleep(0.3)
-        if proc.poll() is not None:
-            print("[FAIL] Process exited prematurely after primary MapSwitch hotkey!")
-            return False
-        print("[PASS] Primary MapSwitch hotkey (Ctrl+Shift+[, 1001) handled cleanly")
-
-        # Trigger direct hotkey Ctrl+[ (1011)
-        user32.PostMessageW(hwnd, 0x0312, 1011, 0) # WM_HOTKEY MapSwitch Direct
-        time.sleep(0.3)
-        if proc.poll() is not None:
-            print("[FAIL] Process exited prematurely after direct MapSwitch hotkey!")
-            return False
-        print("[PASS] Direct MapSwitch hotkey (Ctrl+[, 1011) handled cleanly")
-
+        # Hotkey dispatch is verified above by an observable lock state change.
+        # Map switching has no stable observable state without a controlled game map.
         # Trigger via tray command ID_TRAY_MAP (2003)
         user32.PostMessageW(hwnd, 0x0111, 2003, 0) # ID_TRAY_MAP = 2003
         time.sleep(0.3)

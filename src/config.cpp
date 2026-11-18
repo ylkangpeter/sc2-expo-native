@@ -6,6 +6,7 @@
 #include <cctype>
 #include <cmath>
 #include <algorithm>
+#include <atomic>
 
 using json = nlohmann::json;
 
@@ -106,9 +107,14 @@ bool AppConfig::ParseHotkey(const std::string& str, unsigned int& out_mod, unsig
         else if (c == '.') vk = VK_OEM_PERIOD;
         else if (c == '/') vk = VK_OEM_2;
         else if (c == '`' || c == '~') vk = VK_OEM_3;
-    } else if (key_part.rfind("f", 0) == 0 && key_part.size() > 1 && std::isdigit(static_cast<unsigned char>(key_part[1]))) {
-        int fnum = std::stoi(key_part.substr(1));
-        if (fnum >= 1 && fnum <= 24) vk = VK_F1 + (fnum - 1);
+    } else if (key_part[0] == 'f' && key_part.size() > 1) {
+        unsigned int fnum = 0;
+        for (size_t i = 1; i < key_part.size(); ++i) {
+            if (!std::isdigit(static_cast<unsigned char>(key_part[i]))) return false;
+            fnum = fnum * 10 + (key_part[i] - '0');
+            if (fnum > 24) return false;
+        }
+        if (fnum >= 1) vk = VK_F1 + (fnum - 1);
     } else if (key_part == "space") vk = VK_SPACE;
     else if (key_part == "tab") vk = VK_TAB;
     else if (key_part == "left") vk = VK_LEFT;
@@ -168,17 +174,7 @@ void AppConfig::ResetToResolutionDefaults(int screen_w, int screen_h) {
                           main_window_width, main_window_height, table_height,
                           font_scale, toast_scale, dummy_sw, dummy_sh);
     config_version = 2;
-    map_hotkey_mod = 0x0002 | 0x0004; // Ctrl + Shift
-    map_hotkey_vk = 0xDB;              // VK_OEM_4 '['
-    map_shortcut = FormatHotkey(map_hotkey_mod, map_hotkey_vk);
-
-    lock_hotkey_mod = 0x0002 | 0x0004; // Ctrl + Shift
-    lock_hotkey_vk = 0xDD;             // VK_OEM_6 ']'
-    lock_shortcut = FormatHotkey(lock_hotkey_mod, lock_hotkey_vk);
-
-    artifact_hotkey_mod = 0x0002 | 0x0004; // Ctrl + Shift
-    artifact_hotkey_vk = 0xDC;             // VK_OEM_5 '\'
-    show_artifact_shortcut = FormatHotkey(artifact_hotkey_mod, artifact_hotkey_vk);
+    ResetHotkeys();
 
     table_font_size = 13;
     toast_allowed = true;
@@ -196,6 +192,20 @@ void AppConfig::ResetToResolutionDefaults(int screen_w, int screen_h) {
     artifact_scale_ratio = 0.70f;
     artifact_opacity = 0.65f;
     InitDefaultArtifactPositions();
+}
+
+void AppConfig::ResetHotkeys() {
+    map_hotkey_mod = 0x0002 | 0x0004; // Ctrl + Shift
+    map_hotkey_vk = 0xDB;              // VK_OEM_4 '['
+    map_shortcut = FormatHotkey(map_hotkey_mod, map_hotkey_vk);
+
+    lock_hotkey_mod = 0x0002 | 0x0004; // Ctrl + Shift
+    lock_hotkey_vk = 0xDD;             // VK_OEM_6 ']'
+    lock_shortcut = FormatHotkey(lock_hotkey_mod, lock_hotkey_vk);
+
+    artifact_hotkey_mod = 0x0002 | 0x0004; // Ctrl + Shift
+    artifact_hotkey_vk = 0xDC;             // VK_OEM_5 '\'
+    show_artifact_shortcut = FormatHotkey(artifact_hotkey_mod, artifact_hotkey_vk);
 }
 
 AppConfig& AppConfig::Instance() {
@@ -374,10 +384,35 @@ bool AppConfig::Save(const std::string& path) const {
         }
         j["artifact_positions"] = j_art;
 
-        std::ofstream file(path);
-        if (!file.is_open()) return false;
-        file << j.dump(4);
-        return true;
+        const std::string data = j.dump(4);
+        static std::atomic<unsigned long> next_temp{0};
+        std::string temp_path;
+        HANDLE file = INVALID_HANDLE_VALUE;
+        for (int attempt = 0; attempt < 100; ++attempt) {
+            temp_path = path + "." + std::to_string(GetCurrentProcessId()) + "." + std::to_string(next_temp++) + ".tmp";
+            file = CreateFileA(temp_path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (file != INVALID_HANDLE_VALUE) break;
+            const DWORD error = GetLastError();
+            if (error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS) return false;
+        }
+        if (file == INVALID_HANDLE_VALUE) return false;
+
+        bool ok = true;
+        size_t offset = 0;
+        while (offset < data.size()) {
+            const DWORD chunk = static_cast<DWORD>(std::min<size_t>(data.size() - offset, MAXDWORD));
+            DWORD written = 0;
+            if (!WriteFile(file, data.data() + offset, chunk, &written, nullptr) || written == 0) {
+                ok = false;
+                break;
+            }
+            offset += written;
+        }
+        if (ok && !FlushFileBuffers(file)) ok = false;
+        if (!CloseHandle(file)) ok = false;
+        if (ok) ok = MoveFileExA(temp_path.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+        if (!ok) DeleteFileA(temp_path.c_str());
+        return ok;
     } catch (const std::exception& e) {
         std::cerr << "Config save warning: " << e.what() << std::endl;
         return false;
