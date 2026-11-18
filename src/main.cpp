@@ -6,6 +6,7 @@
 #include <tchar.h>
 #include <iostream>
 #include <algorithm>
+#include <climits>
 #include <cmath>
 
 #include "imgui.h"
@@ -105,23 +106,17 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             ImGui::GetStyle().FontScaleDpi = dpi_scale;
         }
 
-        RECT* prc = (RECT*)lParam;
+        const RECT* prc = reinterpret_cast<const RECT*>(lParam);
         if (prc) {
-            auto& cfg = AppConfig::Instance();
-            bool changed = cfg.main_window_x != prc->left || cfg.main_window_y != prc->top;
+            // Keep the configured base HUD dimensions intact. The suggested
+            // rectangle is the complete native window and may include the
+            // commander panel or the unlocked drag area.
             SetWindowPos(hWnd, nullptr,
                          prc->left, prc->top,
                          prc->right - prc->left,
                          prc->bottom - prc->top,
                          SWP_NOZORDER | SWP_NOACTIVATE);
-
-            cfg.main_window_x = prc->left;
-            cfg.main_window_y = prc->top;
-            // Keep the configured base HUD dimensions intact. The suggested
-            // rectangle is the complete native window and may include the
-            // commander panel or the unlocked drag area.
-            LockWindow::Instance().UpdatePosition(prc->left, prc->top);
-            if (changed && !OverlayUI::Instance().IsLocked()) {
+            if (UpdateWindowPositionInMemory(hWnd) && !OverlayUI::Instance().IsLocked()) {
                 ScheduleWindowPositionSave(hWnd);
             }
         }
@@ -311,8 +306,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     int win_x = cfg.main_window_x;
     int win_y = cfg.main_window_y;
 
-    if (win_x < 0 || win_x > screen_w - 50) win_x = 20;
-    if (win_y < 0 || win_y > screen_h - 50) win_y = 200;
+    // Saved coordinates belong to the virtual desktop and may be negative.
+    const RECT saved_rect = {
+        win_x, win_y,
+        static_cast<LONG>(std::min<long long>(static_cast<long long>(win_x) + win_w, LONG_MAX)),
+        static_cast<LONG>(std::min<long long>(static_cast<long long>(win_y) + win_h, LONG_MAX))
+    };
+    if (!MonitorFromRect(&saved_rect, MONITOR_DEFAULTTONULL)) {
+        win_x = 20;
+        win_y = 200;
+    }
 
     // 4. Register Window Class
     HICON hAppIcon = LoadIconW(hInstance, L"IDI_ICON1");
@@ -362,7 +365,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
 
     // 7. Initialize Subsystems (LockWindow is always clickable and floats with main window)
     LockWindow::Instance().Init(hInstance, hwnd);
-    LockWindow::Instance().UpdatePosition(win_x, win_y);
     LockWindow::Instance().SetLocked(true);
 
     ArtifactViewer::Instance().Init(hInstance);
