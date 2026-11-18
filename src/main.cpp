@@ -303,10 +303,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
 
     int win_w = cfg.main_window_width > 120 ? cfg.main_window_width : def_main_w;
     int win_h = cfg.main_window_height > 120 ? cfg.main_window_height : def_main_h;
-    int win_x = cfg.main_window_x;
+    // Keep the HUD visible at the primary display's left edge on restart.
+    int win_x = std::max(0, cfg.main_window_x);
     int win_y = cfg.main_window_y;
 
-    // Saved coordinates belong to the virtual desktop and may be negative.
     const RECT saved_rect = {
         win_x, win_y,
         static_cast<LONG>(std::min<long long>(static_cast<long long>(win_x) + win_w, LONG_MAX)),
