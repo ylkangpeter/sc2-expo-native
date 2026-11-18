@@ -1,112 +1,76 @@
 # -*- coding: utf-8 -*-
-import subprocess
-import time
+"""Check the artifact shortcut and overlay on a controlled debug map."""
 import ctypes
 from ctypes import wintypes
+import subprocess
 import sys
-import os
+import time
 
-user32 = ctypes.windll.user32
+from test_bug_fixes import isolated_debug_app, user32
 
 VK_CONTROL = 0x11
 VK_SHIFT = 0x10
-VK_OEM_5 = 0xDC # '\' key
+VK_OEM_5 = 0xDC
 KEYEVENTF_KEYUP = 0x0002
 
+
 def press_artifact_hotkey():
-    user32.keybd_event(VK_CONTROL, 0, 0, 0)
-    user32.keybd_event(VK_SHIFT, 0, 0, 0)
-    user32.keybd_event(VK_OEM_5, 0, 0, 0)
+    for key in (VK_CONTROL, VK_SHIFT, VK_OEM_5):
+        user32.keybd_event(key, 0, 0, 0)
     time.sleep(0.05)
-    user32.keybd_event(VK_OEM_5, 0, KEYEVENTF_KEYUP, 0)
-    user32.keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0)
-    user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+    for key in (VK_OEM_5, VK_SHIFT, VK_CONTROL):
+        user32.keybd_event(key, 0, KEYEVENTF_KEYUP, 0)
+
 
 def test_artifact_toggle():
-    print("Launching sc2_expo.exe for artifact overlay verification...")
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.abspath(os.path.join(script_dir, ".."))
-    exe_path = os.path.join(repo_root, "dist", "sc2_expo", "sc2_expo.exe")
-    run_dir = os.path.join(repo_root, "dist", "sc2_expo")
-    if not os.path.exists(exe_path):
-        exe_path = os.path.join(repo_root, "sc2_expo.exe")
-        run_dir = repo_root
-    proc = subprocess.Popen([exe_path], cwd=run_dir)
+    temp_dir, run_dir, exe_path = isolated_debug_app(default_artifact_hotkey=True)
+    proc = None
     try:
+        proc = subprocess.Popen([exe_path], cwd=run_dir)
         hwnd = 0
         for _ in range(50):
-            hwnd = user32.FindWindowW("SC2ExpoNativeOverlay", "SC2 Expo Native")
-            if hwnd:
-                break
+            candidate = user32.FindWindowW("SC2ExpoNativeOverlay", "SC2 Expo Native")
+            owner = wintypes.DWORD()
+            if candidate:
+                user32.GetWindowThreadProcessId(candidate, ctypes.byref(owner))
+                if owner.value == proc.pid:
+                    hwnd = candidate
+                    break
             time.sleep(0.1)
         if not hwnd:
-            print("[FAIL] Main window not found")
+            print("[FAIL] Main window for test process not found")
             return False
-
-        time.sleep(0.5)
-
-        h_art = user32.FindWindowW("SC2ArtifactOverlayNative", "SC2 Artifact Viewer")
-        if not h_art:
-            print("[FAIL] Artifact window not found!")
+        time.sleep(0.8)  # Allow debug mode to select the non-artifact map.
+        artifact = user32.FindWindowW("SC2ArtifactOverlayNative", "SC2 Artifact Viewer")
+        owner = wintypes.DWORD()
+        if artifact:
+            user32.GetWindowThreadProcessId(artifact, ctypes.byref(owner))
+        if not artifact or owner.value != proc.pid:
+            print("[FAIL] Artifact window for test process not found")
             return False
-
-        # Press Ctrl+Shift+\ to Show Artifact
-        print("Triggering Ctrl+Shift+\\ to Show Artifact...")
-        press_artifact_hotkey()
-        time.sleep(0.8)
-
-        live_non_artifact = False
-        try:
-            import urllib.request, json
-            req = urllib.request.urlopen("http://127.0.0.1:6119/game", timeout=1)
-            gdata = json.loads(req.read().decode('utf-8', errors='replace'))
-            if gdata.get("players"):
-                live_non_artifact = True
-        except Exception:
-            pass
-
-        is_vis = user32.IsWindowVisible(h_art)
-        print(f"Artifact window found (HWND={h_art}), IsVisible={bool(is_vis)}")
-
-        if live_non_artifact:
-            if is_vis:
-                print("[FAIL] Current map has no artifact, but artifact overlay is visible!")
-                return False
-            print("[PASS] Verified: Non-artifact map strictly hides artifact overlay!")
-            user32.PostMessageW(hwnd, 0x0010, 0, 0)
-            proc.wait(timeout=5)
-            return True
-
-        if not is_vis:
-            print("[FAIL] Artifact window should be visible")
+        if not (user32.GetWindowLongW(artifact, -20) & 0x20):
+            print("[FAIL] Artifact window must be click-through")
             return False
-
-        # Verify it has WS_EX_TRANSPARENT
-        ex = user32.GetWindowLongW(h_art, -20)
-        if not (ex & 0x00000020):
-            print("[FAIL] Artifact window should have WS_EX_TRANSPARENT set!")
+        # A competing registration would make this test unable to exercise the app.
+        if user32.RegisterHotKey(None, 42, 0x0002 | 0x0004, VK_OEM_5):
+            user32.UnregisterHotKey(None, 42)
+            print("[FAIL] Default artifact shortcut was not registered")
             return False
-        print("[PASS] Artifact window is visible and 100% click-through (WS_EX_TRANSPARENT)!")
-
-        # Press Ctrl+Shift+\ to Hide Artifact
-        print("Triggering Ctrl+Shift+\\ to Hide Artifact...")
         press_artifact_hotkey()
         time.sleep(0.5)
-
-        is_vis2 = user32.IsWindowVisible(h_art)
-        print(f"Artifact window after 2nd hotkey, IsVisible={bool(is_vis2)}")
-        if is_vis2:
-            print("[FAIL] Artifact window should be hidden")
+        if proc.poll() is not None or user32.IsWindowVisible(artifact):
+            print("[FAIL] Artifact overlay appeared on the non-artifact debug map")
             return False
-
-        print("[PASS] Artifact overlay successfully toggles show/hide via Ctrl+Shift+\\!")
+        print("[PASS] Artifact window is click-through and stays hidden on the debug map")
         user32.PostMessageW(hwnd, 0x0010, 0, 0)
         proc.wait(timeout=5)
-        return True
+        return proc.returncode == 0
     finally:
-        if proc.poll() is None:
+        if proc is not None and proc.poll() is None:
             proc.kill()
+            proc.wait()
+        temp_dir.cleanup()
+
 
 if __name__ == "__main__":
-    ok = test_artifact_toggle()
-    sys.exit(0 if ok else 1)
+    sys.exit(0 if test_artifact_toggle() else 1)

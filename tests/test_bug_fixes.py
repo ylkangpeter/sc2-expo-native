@@ -5,6 +5,9 @@ import ctypes
 from ctypes import wintypes
 import sys
 import os
+import json
+import shutil
+import tempfile
 
 user32 = ctypes.windll.user32
 
@@ -41,11 +44,7 @@ def send_hotkey(hwnd, binding):
     return bool(user32.PostMessageW(hwnd, WM_HOTKEY, hotkey_id, mod | (vk << 16)))
 
 
-def test_fixes():
-    print("=================================================================")
-    print("RUNNING TEST SUITE: Bug Fixes Verification (Artifact & Banner)")
-    print("=================================================================")
-
+def isolated_debug_app(default_artifact_hotkey=False):
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.abspath(os.path.join(script_dir, ".."))
     exe_path = os.path.join(repo_root, "dist", "sc2_expo", "sc2_expo.exe")
@@ -54,6 +53,31 @@ def test_fixes():
         exe_path = os.path.join(repo_root, "sc2_expo.exe")
         run_dir = repo_root
 
+    # The executable resolves files relative to itself. Copy it and its data so
+    # debug mode and any saved settings never alter the user's installation.
+    temp_dir = tempfile.TemporaryDirectory(prefix="sc2-bug-test-")
+    isolated_dir = temp_dir.name
+    shutil.copy2(exe_path, os.path.join(isolated_dir, "sc2_expo.exe"))
+    for directory in ("resources", "ico"):
+        shutil.copytree(os.path.join(run_dir, directory), os.path.join(isolated_dir, directory))
+    with open(os.path.join(run_dir, "config.json"), encoding="utf-8") as f:
+        config = json.load(f)
+    config["debug_mode"] = True
+    if default_artifact_hotkey:
+        config["artifact_hotkey_mod"] = MOD_CONTROL | MOD_SHIFT
+        config["artifact_hotkey_vk"] = 0xDC
+    with open(os.path.join(isolated_dir, "config.json"), "w", encoding="utf-8") as f:
+        json.dump(config, f, ensure_ascii=False)
+    run_dir = isolated_dir
+    exe_path = os.path.join(run_dir, "sc2_expo.exe")
+    return temp_dir, run_dir, exe_path
+
+
+def test_fixes():
+    print("=================================================================")
+    print("RUNNING TEST SUITE: Bug Fixes Verification (Artifact & Banner)")
+    print("=================================================================")
+    temp_dir, run_dir, exe_path = isolated_debug_app()
     bindings = configured_hotkeys(run_dir)
     if "lock" not in bindings or "artifact" not in bindings:
         print("[FAIL] Lock and artifact shortcuts must be enabled for this test")
@@ -106,44 +130,18 @@ def test_fixes():
             return False
         print("[PASS] Configured hotkey registration verified by lock state changes")
 
-        # Test 1: Check Live SC2 Game & Artifact Behavior
-        # Per user requirement: Non-artifact maps MUST NOT show any artifact overlay!
-        print("\n--- Test 1: Testing Artifact toggle according to map artifact presence ---")
-        live_non_artifact = False
-        try:
-            import urllib.request, json
-            req = urllib.request.urlopen("http://127.0.0.1:6119/game", timeout=1)
-            gdata = json.loads(req.read().decode('utf-8', errors='replace'))
-            # If live match has players, check if it's 克哈裂痕 or similar non-artifact map
-            if gdata.get("players"):
-                live_non_artifact = True
-                print("Live SC2 detected in-game (克哈裂痕/non-artifact map).")
-        except Exception:
-            pass
-
-        send_hotkey(hwnd, bindings["artifact"])
+        # Debug mode fixes the active map to 往日神庙-A, which has no artifact.
+        # Positive show/hide behavior is covered with a known artifact map in
+        # the C++ ArtifactViewer tests.
+        print("\n--- Test 1: Artifact hotkey on the debug non-artifact map ---")
+        if not send_hotkey(hwnd, bindings["artifact"]):
+            print("[FAIL] Could not post artifact hotkey")
+            return False
         time.sleep(0.8)
-
-        vis = user32.IsWindowVisible(h_art)
-        print(f"Artifact visible after hotkey: {bool(vis)}")
-        if live_non_artifact:
-            if vis:
-                print("[FAIL] Current map has no artifact, but artifact overlay is visible! User requirement violated.")
-                return False
-            print("[PASS] Verified: Non-artifact map strictly hides artifact overlay (User request satisfied)!")
-        else:
-            if not vis:
-                print("[FAIL] Artifact window should be visible on artifact map!")
-                return False
-            print("[PASS] Artifact overlay showed successfully!")
-            # Hide it
-            send_hotkey(hwnd, bindings["artifact"])
-            time.sleep(0.5)
-            vis = user32.IsWindowVisible(h_art)
-            if vis:
-                print("[FAIL] Artifact window should be hidden!")
-                return False
-            print("[PASS] Artifact overlay hid successfully!")
+        if user32.IsWindowVisible(h_art):
+            print("[FAIL] Artifact overlay appeared on the debug non-artifact map")
+            return False
+        print("[PASS] Artifact overlay remains hidden on the debug non-artifact map")
 
         # Test 2: Tray Command ID_TRAY_SETTINGS (2006)
         print("\n--- Test 2: Testing Settings Panel via Tray Command (2006) ---")
@@ -238,6 +236,8 @@ def test_fixes():
     finally:
         if proc.poll() is None:
             proc.kill()
+            proc.wait()
+        temp_dir.cleanup()
 
 if __name__ == "__main__":
     ok = test_fixes()

@@ -639,6 +639,18 @@ void TestArtifactViewer() {
     TEST_ASSERT(av.ResolveArtifactMap("亡者之夜") == "亡者之夜", "ResolveArtifactMap 亡者之夜");
     TEST_ASSERT(av.ResolveArtifactMap("Dead of Night") == "亡者之夜", "ResolveArtifactMap Dead of Night");
     TEST_ASSERT(av.ResolveArtifactMap("死亡摇篮") == "死亡摇篮", "ResolveArtifactMap 死亡摇篮");
+
+    // Exercise the window against a known artifact map and a non-artifact map.
+    const HRESULT com_result = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    av.Init(GetModuleHandleW(nullptr));
+    av.Toggle("死亡摇篮");
+    TEST_ASSERT(av.IsVisible(), "Artifact map should show the viewer");
+    av.Toggle("死亡摇篮");
+    TEST_ASSERT(!av.IsVisible(), "Second toggle should hide the viewer");
+    av.Toggle("往日神庙-A");
+    TEST_ASSERT(!av.IsVisible(), "Non-artifact map should not show the viewer");
+    av.Shutdown();
+    if (SUCCEEDED(com_result)) CoUninitialize();
 }
 
 void TestSc2Client() {
