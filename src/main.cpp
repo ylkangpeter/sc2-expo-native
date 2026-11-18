@@ -303,6 +303,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
 
     int win_w = cfg.main_window_width > 120 ? cfg.main_window_width : def_main_w;
     int win_h = cfg.main_window_height > 120 ? cfg.main_window_height : def_main_h;
+    const int saved_x = cfg.main_window_x;
+    const int saved_y = cfg.main_window_y;
     // Keep the HUD visible at the primary display's left edge on restart.
     int win_x = std::max(0, cfg.main_window_x);
     int win_y = cfg.main_window_y;
@@ -348,6 +350,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     );
 
     if (!hwnd) return 1;
+
+    // Creation can send WM_MOVE and update the in-memory config while locked.
+    // Persist any normalized or system-adjusted position even without a drag.
+    UpdateWindowPositionInMemory(hwnd);
+    if (cfg.main_window_x != saved_x || cfg.main_window_y != saved_y) {
+        ScheduleWindowPositionSave(hwnd);
+    }
 
     // Set full layered alpha so the window is visible
     SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);

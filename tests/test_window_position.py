@@ -96,8 +96,12 @@ class WindowPositionTests(unittest.TestCase):
                     try:
                         hwnd = wait_window(proc)
                         self.assertEqual(position(hwnd), (max(0, x), y))
-                        self.assertTrue(user32.PostMessageW(hwnd, 0x0010, 0, 0))
+                        # Exit through the tray command, which must flush pending saves.
+                        self.assertTrue(user32.PostMessageW(hwnd, 0x0111, 2001, 0))
                         self.assertEqual(proc.wait(timeout=15), 0)
+                        saved = json.loads(config.read_text(encoding="utf-8"))
+                        self.assertEqual((saved["main_window_x"], saved["main_window_y"]),
+                                         (max(0, x), y))
                     finally:
                         if proc.poll() is None:
                             proc.kill()
