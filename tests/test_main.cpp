@@ -43,10 +43,15 @@ void TestConfig() {
 
     // Test save & reload
     cfg.toast_when_hidden = true;
-    cfg.map_shortcut = "ctrl + alt + m";
-    cfg.lock_shortcut = "ctrl + alt + l";
-    cfg.screenshot_shortcut = "ctrl + alt + s";
-    cfg.show_artifact_shortcut = "ctrl + alt + a";
+    cfg.map_hotkey_mod = 0x0002 | 0x0001; // Ctrl + Alt
+    cfg.map_hotkey_vk = 'M';
+    cfg.map_shortcut = AppConfig::FormatHotkey(cfg.map_hotkey_mod, cfg.map_hotkey_vk);
+    cfg.lock_hotkey_mod = 0x0002 | 0x0001;
+    cfg.lock_hotkey_vk = 'L';
+    cfg.lock_shortcut = AppConfig::FormatHotkey(cfg.lock_hotkey_mod, cfg.lock_hotkey_vk);
+    cfg.artifact_hotkey_mod = 0x0002 | 0x0001;
+    cfg.artifact_hotkey_vk = 'A';
+    cfg.show_artifact_shortcut = AppConfig::FormatHotkey(cfg.artifact_hotkey_mod, cfg.artifact_hotkey_vk);
     cfg.table_font_size = 16;
     cfg.mutator_alert_seconds = 45;
     cfg.mutator_duration_seconds = 8;
@@ -70,10 +75,11 @@ void TestConfig() {
     TEST_ASSERT(test_cfg.toast_border_color.size() == 3, "Reloaded toast_border_color should have 3 components");
     TEST_ASSERT(test_cfg.toast_show_border == false, "Reloaded toast_show_border should match");
     TEST_ASSERT(std::abs(test_cfg.toast_opacity - 0.65f) < 0.01f, "Reloaded toast_opacity should match");
-    TEST_ASSERT(test_cfg.map_shortcut == "ctrl + alt + m", "Reloaded map_shortcut should match");
-    TEST_ASSERT(test_cfg.lock_shortcut == "ctrl + alt + l", "Reloaded lock_shortcut should match");
-    TEST_ASSERT(test_cfg.screenshot_shortcut == "ctrl + alt + s", "Reloaded screenshot_shortcut should match");
-    TEST_ASSERT(test_cfg.show_artifact_shortcut == "ctrl + alt + a", "Reloaded show_artifact_shortcut should match");
+    TEST_ASSERT(test_cfg.map_shortcut == "Ctrl + Alt + M", "Reloaded map_shortcut should match");
+    TEST_ASSERT(test_cfg.lock_shortcut == "Ctrl + Alt + L", "Reloaded lock_shortcut should match");
+    TEST_ASSERT(test_cfg.show_artifact_shortcut == "Ctrl + Alt + A", "Reloaded show_artifact_shortcut should match");
+    TEST_ASSERT(test_cfg.map_hotkey_mod == (0x0002 | 0x0001), "Reloaded map_hotkey_mod should match");
+    TEST_ASSERT(test_cfg.map_hotkey_vk == 'M', "Reloaded map_hotkey_vk should match");
     TEST_ASSERT(test_cfg.table_font_size == 16, "Reloaded table_font_size should match");
     TEST_ASSERT(test_cfg.mutator_alert_seconds == 45, "Reloaded mutator_alert_seconds should match");
     TEST_ASSERT(test_cfg.mutator_duration_seconds == 8, "Reloaded mutator_duration_seconds should match");
@@ -110,8 +116,8 @@ void TestConfig() {
         TEST_ASSERT(mh == 350, "1080p main window height should be 350");
         TEST_ASSERT(th == 235, "1080p table height should be 235");
         TEST_ASSERT(std::abs(fs - 1.0f) < 0.05f, "1080p font scale should be 1.0");
-        TEST_ASSERT(sw == 380, "1080p setting width should be 380");
-        TEST_ASSERT(sh == 600, "1080p setting height should be 600");
+        TEST_ASSERT(sw == 420, "1080p setting width should be 420");
+        TEST_ASSERT(sh == 660, "1080p setting height should be 660");
 
         // 2K (2560x1440)
         AppConfig::GetResolutionDefaults(2560, 1440, mw, mh, th, fs, ts, sw, sh);
@@ -128,8 +134,8 @@ void TestConfig() {
         TEST_ASSERT(mh == 700, "4K main window height should be 700");
         TEST_ASSERT(std::abs(fs - 1.0f) < 0.05f, "4K user font scale baseline should be 1.0f");
         TEST_ASSERT(std::abs(ts - 2.8f) < 0.05f, "4K toast scale should be 2.8");
-        TEST_ASSERT(sw == 760, "4K setting width should be 760");
-        TEST_ASSERT(sh == 1200, "4K setting height should be 1200");
+        TEST_ASSERT(sw == 840, "4K setting width should be 840");
+        TEST_ASSERT(sh == 1320, "4K setting height should be 1320");
 
         // Ultrawide (3440x1440) should use 16:9 equivalent to avoid inflating
         AppConfig::GetResolutionDefaults(3440, 1440, mw, mh, th, fs, ts, sw, sh);

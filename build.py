@@ -98,6 +98,18 @@ def build():
     ]
     
     target_exe = "dist/sc2_expo/sc2_expo.exe"
+    if os.path.exists(target_exe):
+        old_exe = target_exe + ".old"
+        if os.path.exists(old_exe):
+            try:
+                os.remove(old_exe)
+            except Exception:
+                pass
+        try:
+            os.rename(target_exe, old_exe)
+        except Exception:
+            pass
+
     cmd = [
         CLANG_PATH,
         "-O2",

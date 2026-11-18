@@ -2,6 +2,7 @@
 #include "config.h"
 #include "overlay_ui.h"
 #include "toast_window.h"
+#include "hotkeys.h"
 #include <imgui.h>
 #include <imgui_impl_win32.h>
 #include <imgui_impl_dx11.h>
@@ -36,6 +37,34 @@ static UINT GetWindowDPI(HWND hwnd) {
 }
 
 static LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (SettingsWindow::Instance().IsRecording()) {
+        if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) {
+            if (wParam == VK_ESCAPE) {
+                SettingsWindow::Instance().CancelRecording();
+                return 0;
+            }
+            if (wParam == VK_CONTROL || wParam == VK_LCONTROL || wParam == VK_RCONTROL ||
+                wParam == VK_SHIFT   || wParam == VK_LSHIFT   || wParam == VK_RSHIFT ||
+                wParam == VK_MENU    || wParam == VK_LMENU    || wParam == VK_RMENU ||
+                wParam == VK_LWIN    || wParam == VK_RWIN) {
+                return 0;
+            }
+
+            unsigned int mod = 0;
+            if (GetKeyState(VK_CONTROL) & 0x8000) mod |= 0x0002;
+            if (GetKeyState(VK_MENU) & 0x8000)    mod |= 0x0001;
+            if (GetKeyState(VK_SHIFT) & 0x8000)   mod |= 0x0004;
+            if ((GetKeyState(VK_LWIN) & 0x8000) || (GetKeyState(VK_RWIN) & 0x8000)) mod |= 0x0008;
+
+            SettingsWindow::Instance().ApplyRecordedHotkey(mod, static_cast<unsigned int>(wParam));
+            return 0;
+        } else if (msg == WM_KEYUP || msg == WM_SYSKEYUP) {
+            return 0;
+        } else if (msg == WM_KILLFOCUS) {
+            SettingsWindow::Instance().CancelRecording();
+        }
+    }
+
     ImGuiContextScope scope(SettingsWindow::Instance().GetImGuiContext());
 
     if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam))
@@ -266,14 +295,52 @@ void SettingsWindow::OnResize(UINT width, UINT height) {
 
 void SettingsWindow::Show(bool show) {
     m_visible = show;
+    if (!m_visible) {
+        CancelRecording();
+    }
     if (m_hwnd) {
         if (m_visible) {
+            RECT rc;
+            if (GetWindowRect(m_hwnd, &rc)) {
+                int screen_w = GetSystemMetrics(SM_CXSCREEN);
+                int screen_h = GetSystemMetrics(SM_CYSCREEN);
+                if (rc.right <= 0 || rc.left >= screen_w || rc.bottom <= 0 || rc.top >= screen_h) {
+                    int win_w = rc.right - rc.left;
+                    int win_h = rc.bottom - rc.top;
+                    int win_x = (screen_w - win_w) / 2;
+                    int win_y = (screen_h - win_h) / 2;
+                    SetWindowPos(m_hwnd, HWND_TOPMOST, win_x, win_y, win_w, win_h, SWP_NOACTIVATE);
+                }
+            }
             ShowWindow(m_hwnd, SW_SHOW);
             SetForegroundWindow(m_hwnd);
         } else {
             ShowWindow(m_hwnd, SW_HIDE);
         }
     }
+}
+
+void SettingsWindow::ApplyRecordedHotkey(unsigned int mod, unsigned int vk) {
+    auto& cfg = AppConfig::Instance();
+    std::string formatted = AppConfig::FormatHotkey(mod, vk);
+
+    if (m_recording_action == 1) {
+        cfg.map_hotkey_mod = mod;
+        cfg.map_hotkey_vk = vk;
+        cfg.map_shortcut = formatted;
+    } else if (m_recording_action == 2) {
+        cfg.lock_hotkey_mod = mod;
+        cfg.lock_hotkey_vk = vk;
+        cfg.lock_shortcut = formatted;
+    } else if (m_recording_action == 3) {
+        cfg.artifact_hotkey_mod = mod;
+        cfg.artifact_hotkey_vk = vk;
+        cfg.show_artifact_shortcut = formatted;
+    }
+
+    m_recording_action = 0;
+    cfg.Save();
+    HotkeyManager::Instance().ReRegister();
 }
 
 void SettingsWindow::Toggle() {
@@ -306,6 +373,24 @@ void SettingsWindow::Render(float delta_time) {
         m_need_hide = false;
         Hide();
     }
+
+    // Dynamically adapt window height to content if height differs
+    if (m_measured_content_h > 300) {
+        RECT rc;
+        if (GetWindowRect(m_hwnd, &rc)) {
+            int cur_w = rc.right - rc.left;
+            int cur_h = rc.bottom - rc.top;
+            if (std::abs(m_measured_content_h - cur_h) >= 4) {
+                int cur_x = rc.left;
+                int cur_y = rc.top;
+                int screen_h = GetSystemMetrics(SM_CYSCREEN);
+                if (screen_h > 0 && cur_y + m_measured_content_h > screen_h - 10) {
+                    cur_y = std::max(10, screen_h - m_measured_content_h - 30);
+                }
+                SetWindowPos(m_hwnd, nullptr, cur_x, cur_y, cur_w, m_measured_content_h, SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+        }
+    }
 }
 
 void SettingsWindow::RenderUI(float delta_time) {
@@ -320,11 +405,12 @@ void SettingsWindow::RenderUI(float delta_time) {
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
-                            ImGuiWindowFlags_NoBringToFrontOnFocus;
+                            ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollbar;
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0f, 12.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0f, 10.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 5.0f));
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
 
     if (m_save_notice_timer > 0.0f) {
@@ -353,25 +439,35 @@ void SettingsWindow::RenderUI(float delta_time) {
             }
         };
 
-        // Drag window by clicking and dragging on the background or title
+        // Drag window by clicking and dragging on the background or title bar
         if (ImGui::IsWindowHovered() && ImGui::IsMouseDragging(0) && !ImGui::IsAnyItemActive()) {
             ReleaseCapture();
             SendMessageW(m_hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
         }
 
-        // Header
-        ImGui::TextColored(ImVec4(0.0f, 0.85f, 1.0f, 1.0f), "设置");
+        // Header / Title Bar (Whole row up to close button is draggable)
+        float title_h = ImGui::GetFrameHeight() * 1.15f;
+        float close_size = ImGui::GetFrameHeight();
+        float avail_title_w = ImGui::GetContentRegionAvail().x;
+        float drag_w = avail_title_w - close_size - ImGui::GetStyle().ItemSpacing.x;
+
+        ImVec2 title_p0 = ImGui::GetCursorScreenPos();
+
+        ImGui::InvisibleButton("##TitleBarDragArea", ImVec2(drag_w, title_h));
+        if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f)) {
+            ReleaseCapture();
+            SendMessageW(m_hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+        }
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("按住可拖动设置窗口位置");
-            if (ImGui::IsMouseDragging(0)) {
-                ReleaseCapture();
-                SendMessageW(m_hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
-            }
         }
 
-        float close_size = ImGui::GetFrameHeight();
-        ImGui::SameLine(ImGui::GetWindowWidth() - close_size - ImGui::GetStyle().WindowPadding.x);
-        if (ImGui::Button("X##CloseSettings", ImVec2(close_size, close_size))) {
+        float text_y = title_p0.y + (title_h - ImGui::GetTextLineHeight()) * 0.5f;
+        ImGui::GetWindowDrawList()->AddText(ImVec2(title_p0.x, text_y),
+                                           IM_COL32(0, 217, 255, 255), "设置");
+
+        ImGui::SameLine();
+        if (ImGui::Button("X##CloseSettings", ImVec2(close_size, title_h))) {
             m_need_hide = true;
         }
 
@@ -483,12 +579,94 @@ void SettingsWindow::RenderUI(float delta_time) {
         ImGui::Separator();
         ImGui::Spacing();
 
-        // 4. Action Buttons (Adaptive layout for any font scale: 3 columns, 2 columns, or 1 column)
+        // 4. Hotkeys Configuration
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "[ 全局快捷键设置 ]");
+
+        auto DrawHotkeyRow = [&](const char* label, int action_id, const std::string& shortcut_str) {
+            bool recording = (m_recording_action == action_id);
+            std::string btn_label;
+            if (recording) {
+                btn_label = "按下组合键... (Esc取消)##" + std::string(label);
+            } else {
+                btn_label = (shortcut_str.empty() ? "未设置" : shortcut_str) + "##" + std::string(label);
+            }
+
+            // Left: Feature label
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextColored(ImVec4(0.9f, 0.9f, 0.95f, 1.0f), "%s", label);
+
+            // Right: Interactive button
+            ImGui::SameLine();
+            float btn_w = std::max(170.0f, avail_w * 0.48f);
+            float target_x = ImGui::GetWindowWidth() - btn_w - ImGui::GetStyle().WindowPadding.x;
+            if (target_x > ImGui::GetCursorPosX()) {
+                ImGui::SetCursorPosX(target_x);
+            }
+
+            if (recording) {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.85f, 0.25f, 0.25f, 0.95f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.95f, 0.35f, 0.35f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+            } else {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.22f, 0.28f, 0.85f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.0f, 0.6f, 0.9f, 0.85f));
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.3f, 0.9f, 1.0f, 1.0f));
+            }
+
+            float btn_h = std::max(24.0f * cfg.font_scale, ImGui::GetFrameHeight());
+            if (ImGui::Button(btn_label.c_str(), ImVec2(btn_w, btn_h))) {
+                if (recording) {
+                    CancelRecording();
+                } else {
+                    StartRecording(action_id);
+                }
+            }
+            ImGui::PopStyleColor(3);
+        };
+
+        DrawHotkeyRow("切换地图路线", 1, cfg.map_shortcut);
+        DrawHotkeyRow("锁定/解锁窗口", 2, cfg.lock_shortcut);
+        DrawHotkeyRow("切换神器标注", 3, cfg.show_artifact_shortcut);
+
+        float rst_hotkey_h = std::max(24.0f * cfg.font_scale, ImGui::GetFrameHeight());
+        if (ImGui::Button("恢复默认快捷键", ImVec2(avail_w, rst_hotkey_h))) {
+            CancelRecording();
+            cfg.map_hotkey_mod = 0x0002 | 0x0004;
+            cfg.map_hotkey_vk = 0xDB;
+            cfg.map_shortcut = AppConfig::FormatHotkey(cfg.map_hotkey_mod, cfg.map_hotkey_vk);
+
+            cfg.lock_hotkey_mod = 0x0002 | 0x0004;
+            cfg.lock_hotkey_vk = 0xDD;
+            cfg.lock_shortcut = AppConfig::FormatHotkey(cfg.lock_hotkey_mod, cfg.lock_hotkey_vk);
+
+            cfg.artifact_hotkey_mod = 0x0002 | 0x0004;
+            cfg.artifact_hotkey_vk = 0xDC;
+            cfg.show_artifact_shortcut = AppConfig::FormatHotkey(cfg.artifact_hotkey_mod, cfg.artifact_hotkey_vk);
+
+            cfg.Save();
+            HotkeyManager::Instance().ReRegister();
+        }
+
+        if (HotkeyManager::Instance().HasFailedHotkeys()) {
+            ImGui::Spacing();
+            std::string warn = "注意：以下快捷键冲突（被其他程序占用）：";
+            for (const auto& name : HotkeyManager::Instance().GetFailedHotkeys()) {
+                warn += "\n  - " + name;
+            }
+            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", warn.c_str());
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // 5. Action Buttons (Adaptive layout for any font scale: 3 columns, 2 columns, or 1 column)
         float act_btn_h = std::max(30.0f, ImGui::GetFrameHeight() * 1.15f);
         float min_btn_w = ImGui::CalcTextSize("恢复默认").x + ImGui::GetStyle().FramePadding.x * 2.0f + 8.0f;
 
         auto SaveAction = [&]() {
             cfg.Save();
+            HotkeyManager::Instance().ReRegister();
             m_save_notice_timer = 3.0f;
         };
         auto ResetAction = [&]() {
@@ -496,6 +674,7 @@ void SettingsWindow::RenderUI(float delta_time) {
             int sh = GetSystemMetrics(SM_CYSCREEN);
             cfg.ResetToResolutionDefaults(sw, sh);
             cfg.Save();
+            HotkeyManager::Instance().ReRegister();
             m_need_update_dimensions = true;
             m_save_notice_timer = 3.0f;
         };
@@ -529,9 +708,15 @@ void SettingsWindow::RenderUI(float delta_time) {
             ImGui::Spacing();
             ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.5f, 1.0f), "设置已成功保存并生效！");
         }
+
+        // Measure content bottom to adapt window height
+        float measured_h = ImGui::GetCursorPosY() + ImGui::GetStyle().WindowPadding.y + 4.0f;
+        if (measured_h > 300.0f) {
+            m_measured_content_h = (int)std::ceil(measured_h);
+        }
     }
     ImGui::End();
 
     ImGui::PopStyleColor(1);
-    ImGui::PopStyleVar(3);
+    ImGui::PopStyleVar(4);
 }

@@ -24,6 +24,12 @@ public:
     HWND GetHWND() const { return m_hwnd; }
     ImGuiContext* GetImGuiContext() const { return m_imguiContext; }
 
+    bool IsRecording() const { return m_recording_action != 0; }
+    int GetRecordingAction() const { return m_recording_action; }
+    void StartRecording(int action) { m_recording_action = action; }
+    void CancelRecording() { m_recording_action = 0; }
+    void ApplyRecordedHotkey(unsigned int mod, unsigned int vk);
+
 private:
     SettingsWindow() = default;
     ~SettingsWindow() { Shutdown(); }
@@ -44,4 +50,6 @@ private:
     bool m_need_hide = false;
     bool m_need_update_dimensions = false;
     float m_save_notice_timer = 0.0f;
+    int m_recording_action = 0; // 0 = none, 1 = map, 2 = lock, 3 = artifact
+    int m_measured_content_h = 0;
 };

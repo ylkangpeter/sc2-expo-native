@@ -20,10 +20,19 @@ struct AppConfig {
     float debug_time_factor = 5.0f;
 
     // Hotkeys
-    std::string map_shortcut = "ctrl + shift + [";
-    std::string lock_shortcut = "ctrl + shift + ]";
-    std::string screenshot_shortcut = "ctrl + shift + -";
-    std::string show_artifact_shortcut = "ctrl + shift + \\";
+    std::string map_shortcut = "Ctrl + Shift + [";
+    std::string lock_shortcut = "Ctrl + Shift + ]";
+    std::string show_artifact_shortcut = "Ctrl + Shift + \\";
+
+    unsigned int map_hotkey_mod = 0x0002 | 0x0004;      // MOD_CONTROL | MOD_SHIFT
+    unsigned int map_hotkey_vk = 0xDB;                  // VK_OEM_4 '['
+    unsigned int lock_hotkey_mod = 0x0002 | 0x0004;     // MOD_CONTROL | MOD_SHIFT
+    unsigned int lock_hotkey_vk = 0xDD;                 // VK_OEM_6 ']'
+    unsigned int artifact_hotkey_mod = 0x0002 | 0x0004; // MOD_CONTROL | MOD_SHIFT
+    unsigned int artifact_hotkey_vk = 0xDC;             // VK_OEM_5 '\'
+
+    static std::string FormatHotkey(unsigned int mod, unsigned int vk);
+    static bool ParseHotkey(const std::string& str, unsigned int& out_mod, unsigned int& out_vk);
 
     // Overlay Window Settings (Base 1080p reference, dynamically scaled)
     int main_window_x = 0;

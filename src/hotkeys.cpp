@@ -1,14 +1,10 @@
 #include "hotkeys.h"
+#include "config.h"
 #include <iostream>
 
 #define HOTKEY_MAP_ID          1001
 #define HOTKEY_LOCK_ID         1002
 #define HOTKEY_ARTIFACT_ID     1003
-#define HOTKEY_SCREENSHOT_ID   1004
-
-#define HOTKEY_MAP_ALT_ID      1011
-#define HOTKEY_LOCK_ALT_ID     1012
-#define HOTKEY_ARTIFACT_ALT_ID 1013
 
 #ifndef MOD_NOREPEAT
 #define MOD_NOREPEAT 0x4000
@@ -27,13 +23,16 @@ static bool TryRegister(HWND hwnd, int id, UINT mod, UINT vk) {
 }
 
 bool HotkeyManager::RegisterAll(HWND hwnd) {
-    UnregisterAll(hwnd);
+    if (hwnd) m_hwnd = hwnd;
+    HWND target = m_hwnd;
+
+    UnregisterAll(target);
     m_failed_hotkeys.clear();
 
     bool all_success = true;
 
     auto do_register = [&](int id, UINT mod, UINT vk, HotkeyAction action, const std::string& name) {
-        if (TryRegister(hwnd, id, mod, vk)) {
+        if (TryRegister(target, id, mod, vk)) {
             m_action_map[id] = action;
         } else {
             all_success = false;
@@ -43,39 +42,39 @@ bool HotkeyManager::RegisterAll(HWND hwnd) {
         }
     };
 
-    // Map Variant Switch:
-    // Primary: Ctrl + Shift + [
-    do_register(HOTKEY_MAP_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_4, HotkeyAction::MapSwitch, "Ctrl+Shift+[");
+    const auto& cfg = AppConfig::Instance();
 
-    // Alternative / Direct: Ctrl + [ (bypasses Windows IME Ctrl+Shift input switcher)
-    do_register(HOTKEY_MAP_ALT_ID, MOD_CONTROL, VK_OEM_4, HotkeyAction::MapSwitch, "Ctrl+[");
+    // 1. Map Switch
+    if (cfg.map_hotkey_vk != 0) {
+        do_register(HOTKEY_MAP_ID, cfg.map_hotkey_mod, cfg.map_hotkey_vk, HotkeyAction::MapSwitch, cfg.map_shortcut);
+    }
 
-    // Lock Toggle:
-    // Primary: Ctrl + Shift + ]
-    do_register(HOTKEY_LOCK_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_6, HotkeyAction::LockToggle, "Ctrl+Shift+]");
+    // 2. Lock Toggle
+    if (cfg.lock_hotkey_vk != 0) {
+        do_register(HOTKEY_LOCK_ID, cfg.lock_hotkey_mod, cfg.lock_hotkey_vk, HotkeyAction::LockToggle, cfg.lock_shortcut);
+    }
 
-    // Alternative / Direct: Ctrl + ]
-    do_register(HOTKEY_LOCK_ALT_ID, MOD_CONTROL, VK_OEM_6, HotkeyAction::LockToggle, "Ctrl+]");
-
-    // Artifact Toggle:
-    // Primary: Ctrl + Shift + \ (VK_OEM_5)
-    do_register(HOTKEY_ARTIFACT_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_5, HotkeyAction::ArtifactToggle, "Ctrl+Shift+\\");
-
-    // Alternative / Direct: Ctrl + \ (VK_OEM_5)
-    do_register(HOTKEY_ARTIFACT_ALT_ID, MOD_CONTROL, VK_OEM_5, HotkeyAction::ArtifactToggle, "Ctrl+\\");
-
-    // Screenshot:
-    // Primary: Ctrl + Shift + - (VK_OEM_MINUS)
-    do_register(HOTKEY_SCREENSHOT_ID, MOD_CONTROL | MOD_SHIFT, VK_OEM_MINUS, HotkeyAction::Screenshot, "Ctrl+Shift+-");
+    // 3. Artifact Toggle
+    if (cfg.artifact_hotkey_vk != 0) {
+        do_register(HOTKEY_ARTIFACT_ID, cfg.artifact_hotkey_mod, cfg.artifact_hotkey_vk, HotkeyAction::ArtifactToggle, cfg.show_artifact_shortcut);
+    }
 
     return all_success;
 }
 
 void HotkeyManager::UnregisterAll(HWND hwnd) {
-    for (const auto& kv : m_action_map) {
-        UnregisterHotKey(hwnd, kv.first);
+    HWND target = hwnd ? hwnd : m_hwnd;
+    if (target) {
+        for (const auto& kv : m_action_map) {
+            UnregisterHotKey(target, kv.first);
+        }
     }
     m_action_map.clear();
+}
+
+bool HotkeyManager::ReRegister() {
+    if (!m_hwnd) return false;
+    return RegisterAll(m_hwnd);
 }
 
 void HotkeyManager::OnHotkey(int id) {
